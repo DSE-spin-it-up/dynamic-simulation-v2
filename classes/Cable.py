@@ -1,10 +1,10 @@
 import numpy as np
 
-from Drone import Drone
-
+from .Payload import Payload
+from .Drone import Drone
 
 class Cable():
-    def __init__(self, id, length, stiffness, damping, conection_A: Drone, conection_B: Drone):
+    def __init__(self, id, length, stiffness, damping, conection_A: Payload, conection_B: Drone):
         self.id = id
         self.length = length
         self.stiffness = stiffness

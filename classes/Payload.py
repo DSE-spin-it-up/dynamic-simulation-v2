@@ -1,14 +1,17 @@
+import numpy as np
+
 class Payload():
     def __init__(self, mass: float, initial_position: np.ndarray, initial_velocity: np.ndarray = np.array([0, 0, 0])):
+        self.id = None
         self.mass = mass
         self.position = initial_position
         self.v = initial_velocity
         
     # ----------------------------------------------------------------------------------
-    # Ignore this, it's just to print the drone object
+    # Ignore this, it's just to print the payload object
     def __repr__(self):
         return (
-            f"Drone object, id: {self.id}, position [m]: ({self.x}, {self.y}, {self.z}), mass [kg]: {self.mass}, velocity [m/s]: ({self.vx}, {self.vy}, {self.vz})\n"
+            f"Payload object, id: {self.id}, position [m]: ({self.x}, {self.y}, {self.z}), mass [kg]: {self.mass}, velocity [m/s]: ({self.vx}, {self.vy}, {self.vz})\n"
         )
     
     # ----------------------------------------------------------------------------------
