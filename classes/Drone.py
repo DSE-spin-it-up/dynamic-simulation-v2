@@ -1,12 +1,15 @@
 import numpy as np
 import numpy.typing as npt
 
+from classes.DroneController import DroneController
+
 class Drone():
     def __init__(self, id: int, mass: float, initial_position: np.ndarray, initial_velocity: np.ndarray = np.array([0, 0, 0])):
         self.id = id
         self.mass = mass
         self.position = initial_position
         self.v = initial_velocity
+        self.controller = DroneController()
 
     # ----------------------------------------------------------------------------------
     # Ignore this, it's just to print the drone object
