@@ -49,14 +49,16 @@ class Cable():
         f_damping = -self.damping * np.dot(relative_vel, unit_vector) * unit_vector
         return np.squeeze(f_damping)
 
-    def _force_value(self):
-        """Returns force for tensile-only cable (no compression)"""
+    def _force_vector_drone(self):
+        """Returns force on drone for tensile-only cable (no compression)"""
         current_length = np.linalg.norm(self.__relative_pos())
         if current_length >= self.length:
             return self.__calculate_f_spring() + self.__calculate_f_damping()
         else:
             return np.array([0, 0, 0])
         
-    def force_vectors(self):
-        f = self._force_value()
-        return -f, f
+    def force_vectors(self) -> tuple[np.ndarray, np.ndarray]:
+        ''' Returns the force vectors acting on the payload and drone, in that order, in the global frame.'''
+        f_drone = self._force_vector_drone()
+        f_payload = -f_drone
+        return f_payload, f_drone
