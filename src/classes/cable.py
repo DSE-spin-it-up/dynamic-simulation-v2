@@ -19,7 +19,7 @@ class Cable():
         )
 
     def __relative_pos(self):
-        return np.array([self.conection_A.x - self.conection_B.x])
+        return np.array([self.conection_A.position - self.conection_B.position])
 
     def __relative_vel(self):
         return np.array([self.conection_A.v - self.conection_B.v])
