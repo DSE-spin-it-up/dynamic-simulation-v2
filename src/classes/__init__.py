@@ -3,7 +3,8 @@ This module contains the main classes for the drone-payload system, including Dr
 When creating a new class, add it here to import it in the main.py file.
 '''
 
-from .Drone import Drone
-from .DroneController import DroneController
-from .HighLevelController import HighLevelController
-from .Payload import Payload
+from .drone import Drone
+from .drone_controller import DroneController
+from .high_level_controller import HighLevelController
+from .payload import Payload
+from .cable import Cable

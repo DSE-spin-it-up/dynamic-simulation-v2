@@ -1,9 +1,9 @@
 import numpy as np
 
-from classes.drone import Drone
-from classes.payload import Payload
-from classes.cable import Cable
-from helpers.default_params import *
+from ..classes.drone import Drone
+from ..classes.payload import Payload
+from ..classes.cable import Cable
+from .default_params import *
 
 def initialise_objects(initial_states: dict[int | str, dict[str, np.ndarray]]) -> tuple[list[Drone], Payload, list[Cable]]:
 

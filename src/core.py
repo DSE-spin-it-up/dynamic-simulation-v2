@@ -1,14 +1,14 @@
-import csv
+import numpy as np
 
-from classes import *
-from helpers import *
+from .classes import *
+from .helpers import *
 
 visualise = True
 logging = True
 
 def main():
     # Initialise objects
-    initial_states = get_initial_states(n=NUM_DRONES, l0=DEFAULT_PARAMS["L0"])
+    initial_states = get_initial_states(num_drones=DEFAULT_PARAMS["n_drones"], R=DEFAULT_PARAMS["R"], L0=DEFAULT_PARAMS["L0"], payload_pos=np.array([0, 0, 0]))
     drones, payload, cables = initialise_objects(initial_states)
 
     # Logging setup
@@ -16,7 +16,7 @@ def main():
         pass
 
     # Simulation loop
-    for t in range(0, SIMULATION_TIME, TIME_STEP):
+    for t in np.arange(0, int(DEFAULT_PARAMS["t_end"] / DEFAULT_PARAMS["dt"]), DEFAULT_PARAMS["dt"]):
         # Update controllers
         pass
 
