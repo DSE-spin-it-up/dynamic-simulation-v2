@@ -33,4 +33,4 @@ DEFAULT_PARAMS: dict = {
 
 }
 
-NUM_DRONES = 4
+NUM_DRONES = 5
