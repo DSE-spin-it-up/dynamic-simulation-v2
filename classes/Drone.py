@@ -1,7 +1,6 @@
 import numpy as np
-import numpy.typing as npt
 
-from classes.DroneController import DroneController
+from classes.drone_controller import DroneController
 
 class Drone():
     def __init__(self, id: int, mass: float, initial_position: np.ndarray, initial_velocity: np.ndarray = np.array([0, 0, 0])):
