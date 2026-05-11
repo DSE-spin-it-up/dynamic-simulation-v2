@@ -51,8 +51,8 @@ class Cable():
 
     def force_value(self):
         """Returns force for tensile-only cable (no compression)"""
-        l = np.linalg.norm(self.__relative_pos())
-        if l >= self.length:
+        current_leght = np.linalg.norm(self.__relative_pos())
+        if current_leght >= self.length:
             return self.__calculate_f_spring() + self.__calculate_f_damping()
         else:
             return np.array([0, 0, 0])

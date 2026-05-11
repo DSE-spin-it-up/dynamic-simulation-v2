@@ -1,7 +1,9 @@
 import numpy as np
 
-from .classes import *
-from .helpers import *
+# Absolute imports so file can be run directly: python src/core.py
+from src.utils.initialise_objects import initialise_objects
+from src.utils.default_params import DEFAULT_PARAMS
+from src.utils.initial_states import get_initial_states
 
 visualise = True
 logging = True
