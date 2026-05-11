@@ -6,15 +6,15 @@ DEFAULT_PARAMS: dict = {
     "g": 9.81,          # gravitational acceleration, m/s²
 
     # Drone properties
-    "m_d": 10.0,         # drone mass, kg  (each)
+    "m_drone": 10.0,         # drone mass, kg  (each)
 
     # Payload properties
-    "m_p": 50.0,         # payload mass, kg
+    "m_payload": 50.0,         # payload mass, kg
 
     # Cable prpoerties
     "L0": 1.5,          # rest length, m
-    "k":  25.0,         # spring stiffness, N/m
-    "c":  20.0,         # damping, N·s/m
+    "k_cable":  25.0,         # spring stiffness, N/m
+    "d_cable":  20.0,         # damping, N·s/m
 
     # SIU Controller - Orbit geometry
     "R":             2.0,   # nominal orbit radius, m
