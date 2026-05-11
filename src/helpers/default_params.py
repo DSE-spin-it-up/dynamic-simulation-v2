@@ -24,7 +24,7 @@ DEFAULT_PARAMS: dict = {
     "k_omega":       5.0,   # angular velocity P gain for steady-state orbit tracking
 
     # Controller - Altitude
-    "y_target": 100.0,  # desired payload altitude, m
+    "z_target": 100.0,  # desired payload altitude, m
     "kp_alt":   3.0,    # proportional gain
     "kd_alt":   7.0,    # derivative gain (high damping suppresses orbit-frequency forcing)
 
