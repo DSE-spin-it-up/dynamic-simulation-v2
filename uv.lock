@@ -105,6 +105,7 @@ name = "dynamic-simulation"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "coverage" },
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "scipy" },
@@ -120,6 +121,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "coverage", specifier = ">=7.14.0" },
     { name = "matplotlib", specifier = ">=3.8" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "scipy", specifier = ">=1.11" },
