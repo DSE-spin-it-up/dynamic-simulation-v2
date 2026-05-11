@@ -33,10 +33,6 @@ DEFAULT_PARAMS: dict = {
 
 }
 
-<<<<<<< HEAD
-NUM_DRONES = 4
+NUM_DRONES = 5
 SIMULATION_TIME = int(DEFAULT_PARAMS["t_end"] - DEFAULT_PARAMS["t_start"])
 TIME_STEP = int(DEFAULT_PARAMS["dt"])
-=======
-NUM_DRONES = 5
->>>>>>> e0dd2e60bb9bd8073b94d343887aa2ede9a338a5
