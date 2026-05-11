@@ -4,25 +4,25 @@ from .payload import Payload
 from .drone import Drone
 
 class Cable():
-    def __init__(self, id, length, stiffness, damping, conection_A: Payload, conection_B: Drone):
+    def __init__(self, id, length, stiffness, damping, payload: Payload, drone: Drone):
         self.id = id
         self.length = length
         self.stiffness = stiffness
         self.damping = damping
-        self.conection_A = conection_A
-        self.conection_B = conection_B
+        self.payload = payload
+        self.drone = drone
 
     def __repr__(self):
         return (
             f"Cable object, id: {self.id}, length [m]: {self.length}, stiffness [N/m]: {self.stiffness}, damping [N s/m]: {self.damping}\n"
-            f"Assigned nodes\n  n1: {self.conection_A}\n  n2: {self.conection_B}\n"
+            f"Assigned nodes\n  n1: {self.payload}\n  n2: {self.drone}\n"
         )
 
     def __relative_pos(self):
-        return np.array([self.conection_A.position - self.conection_B.position])
+        return np.array([self.drone.position - self.payload.position])
 
     def __relative_vel(self):
-        return np.array([self.conection_A.v - self.conection_B.v])
+        return np.array([self.drone.v - self.payload.v])
 
     def __calculate_f_spring(self):
         relative_pos = self.__relative_pos()
@@ -49,10 +49,14 @@ class Cable():
         f_damping = -self.damping * np.dot(relative_vel, unit_vector) * unit_vector
         return np.squeeze(f_damping)
 
-    def force_value(self):
+    def _force_value(self):
         """Returns force for tensile-only cable (no compression)"""
-        current_leght = np.linalg.norm(self.__relative_pos())
-        if current_leght >= self.length:
+        current_length = np.linalg.norm(self.__relative_pos())
+        if current_length >= self.length:
             return self.__calculate_f_spring() + self.__calculate_f_damping()
         else:
             return np.array([0, 0, 0])
+        
+    def force_vectors(self):
+        f = self._force_value()
+        return -f, f

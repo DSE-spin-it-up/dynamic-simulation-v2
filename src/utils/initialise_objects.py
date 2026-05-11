@@ -5,7 +5,7 @@ from ..classes.payload import Payload
 from ..classes.cable import Cable
 from .default_params import DEFAULT_PARAMS
 
-def initialise_objects(initial_states: dict[int, list[np.ndarray]]) -> tuple[list[Drone], Payload, list[Cable]]:
+def initialise_objects(initial_states: dict[int | str, dict[str, np.ndarray]]) -> tuple[list[Drone], Payload, list[Cable]]:
 
     payload_state = initial_states["payload"]
     payload = Payload(
@@ -17,7 +17,7 @@ def initialise_objects(initial_states: dict[int, list[np.ndarray]]) -> tuple[lis
     drones = []
     cables = []
     for id, state in initial_states.items():
-        if id == "payload":
+        if not isinstance(id, int):
             continue
         drone = Drone(id=id, mass=DEFAULT_PARAMS["m_drone"], initial_position=state["position"], initial_velocity=state["velocity"])
         drones.append(drone)
