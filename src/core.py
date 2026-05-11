@@ -1,37 +1,24 @@
 import numpy as np
 
-# Absolute imports so file can be run directly: python src/core.py
 from src.utils.initialise_objects import initialise_objects
 from src.utils.default_params import DEFAULT_PARAMS
 from src.utils.initial_states import get_initial_states
+from src.simulation.physics import simulate
+from src.visualizations.plot import animate_trajectories
 
-visualise = True
-logging = True
 
 def main():
-    # Initialise objects
-    initial_states = get_initial_states(num_drones=DEFAULT_PARAMS["n_drones"], R=DEFAULT_PARAMS["R"], L0=DEFAULT_PARAMS["L0"], payload_pos=np.array([0, 0, 0]))
+    initial_states = get_initial_states(
+        num_drones=DEFAULT_PARAMS["n_drones"],
+        R=DEFAULT_PARAMS["R"],
+        L0=DEFAULT_PARAMS["L0"],
+        payload_pos=np.array([0.0, 0.0, 0.0]),
+    )
     drones, payload, cables = initialise_objects(initial_states)
 
-    # Logging setup
-    if logging:
-        pass
+    history = simulate(drones, payload, cables, DEFAULT_PARAMS)
+    animate_trajectories(history)
 
-    # Simulation loop
-    for t in np.arange(0, int(DEFAULT_PARAMS["t_end"] / DEFAULT_PARAMS["dt"]), DEFAULT_PARAMS["dt"]):
-        # Update controllers
-        pass
-
-        # Update physics
-        pass
-
-        # Log data
-        if logging:
-            pass
-
-        # Visualisation
-        if visualise:
-            pass
 
 if __name__ == "__main__":
     main()

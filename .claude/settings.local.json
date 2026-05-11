@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\unigi\\\\OneDrive\\\\Documentos\\\\GitHub\\\\dynamic-simulation\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\unigi\\\\OneDrive\\\\Documentos\\\\GitHub\\\\dynamic-simulation\" -Recurse)",
+      "Bash(Select-Object -Property FullName, PSIsContainer)",
+      "Bash(Sort-Object FullName)",
+      "Bash(.venv\\\\Scripts\\\\python.exe -m src.core)"
+    ]
+  }
+}

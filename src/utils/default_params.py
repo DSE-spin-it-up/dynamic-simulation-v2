@@ -19,9 +19,9 @@ DEFAULT_PARAMS: dict = {
     "d_cable":  20.0,         # damping, N·s/m
 
     # SIU Controller - Orbit geometry
-    "R":             2.0,   # nominal orbit radius, m
-    "omega_target":  2.5,   # rad/s
-    "k_omega":       5.0,   # angular velocity P gain for steady-state orbit tracking
+    "R":             4.0,   # nominal orbit radius, m
+    "omega_target":  1.0,   # rad/s
+    "k_omega":       3.0,   # angular velocity P gain for steady-state orbit tracking
 
     # Controller - Altitude
     "z_target": 100.0,  # desired payload altitude, m

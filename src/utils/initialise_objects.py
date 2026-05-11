@@ -22,7 +22,7 @@ def initialise_objects(initial_states: dict[int | str, dict[str, np.ndarray]]) -
         drone = Drone(id=id, mass=DEFAULT_PARAMS["m_drone"], initial_position=state["position"], initial_velocity=state["velocity"])
         drones.append(drone)
 
-        cable = Cable(id=id, length=DEFAULT_PARAMS["L0"], stiffness=DEFAULT_PARAMS["k_cable"], damping=DEFAULT_PARAMS["d_cable"], conection_A=payload, conection_B=drone)
+        cable = Cable(id=id, length=DEFAULT_PARAMS["L0"], stiffness=DEFAULT_PARAMS["k_cable"], damping=DEFAULT_PARAMS["d_cable"], payload=payload, drone=drone)
         cables.append(cable)
 
     return drones, payload, cables
