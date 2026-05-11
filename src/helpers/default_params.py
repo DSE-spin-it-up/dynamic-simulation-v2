@@ -2,6 +2,8 @@
 #  DEFAULT SIMULATION PARAMETERS
 # ===========================================================================
 DEFAULT_PARAMS: dict = {
+    "n_drones": 5,      # number of drones in the system
+
     # Physical constants
     "g": 9.81,          # gravitational acceleration, m/s²
 
@@ -32,5 +34,3 @@ DEFAULT_PARAMS: dict = {
     "dt":      0.01,    # output time-step (not the ODE step)
 
 }
-
-NUM_DRONES = 5

@@ -1,10 +1,10 @@
 import numpy as np
 
-from default_params import DEFAULT_PARAMS, NUM_DRONES
+from .default_params import DEFAULT_PARAMS
 
 
 def get_initial_states(
-    num_drones: int = NUM_DRONES,
+    num_drones: int = DEFAULT_PARAMS["n_drones"],
     R: float = DEFAULT_PARAMS["R"],
     L0: float = DEFAULT_PARAMS["L0"],
     payload_pos: np.ndarray = np.zeros(3),
