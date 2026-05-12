@@ -40,7 +40,7 @@ def main():
         # Run low level DroneControllers (currently just returning a force)
         controller_forces = {}
         for drone in drones:
-            thrust = drone.controller.update(t, drone, payload)
+            thrust = drone.controller.compute_thrust(drone, payload)
             controller_forces[drone.id] = thrust
 
         # ---------------------------------- PHYSICS UPDATES ----------------------------------------

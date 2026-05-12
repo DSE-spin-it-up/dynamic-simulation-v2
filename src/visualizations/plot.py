@@ -4,6 +4,9 @@ import matplotlib.cm as cm
 import matplotlib.animation as animation
 from matplotlib.widgets import Slider
 from mpl_toolkits.mplot3d import Axes3D  
+from mpl_toolkits.mplot3d import art3d
+from typing import cast, Any
+import warnings
 
 
 def plot_trajectories(history):
@@ -13,10 +16,10 @@ def plot_trajectories(history):
     Parameters
     ----------
     history : dict returned by simulate()
-        Keys: 't', 'drones' (list of N_times x 6 arrays), -1 (N_times x 6 array for payload)
+        Keys: 't', 'drones' (list of N_times x 6 arrays), 'payload' (N_times x 6 array)
     """
     n_drones = len(history["drones"])
-    colors = cm.tab10(np.linspace(0, 0.9, n_drones))
+    colors = plt.cm.get_cmap('tab10')(np.linspace(0, 0.9, n_drones))
 
     _, ax = plt.subplots(figsize=(7, 7))
 
@@ -26,7 +29,6 @@ def plot_trajectories(history):
         ax.plot(x[0], y[0], "o", color=color, markersize=6)   # start
         ax.plot(x[-1], y[-1], "s", color=color, markersize=6)  # end
 
-    # Payload trajectory accessed via reserved ID -1
     px, py = history[-1][:, 0], history[-1][:, 1]
     ax.plot(px, py, "k-", linewidth=1.5, label="Payload")
     ax.plot(px[0], py[0], "ko", markersize=8)
@@ -62,7 +64,7 @@ def plot_gain_response(params: dict):
         initial_states = get_initial_states(
             num_drones=p["n_drones"], R=p["R"], L0=p["L0"], payload_pos=np.zeros(3)
         )
-        drones, payload, cables, high_level_controller = initialise_objects(initial_states)
+        drones, payload, cables, _ = initialise_objects(initial_states)
         return simulate(drones, payload, cables, p)
 
     def _r_eq(kp):
@@ -75,14 +77,13 @@ def plot_gain_response(params: dict):
     kp0, kd0 = params["kp_alt"], params["kd_alt"]
     R_ref, L0_ref = params["R"], params["L0"]
     n_drones = params["n_drones"]
-    colors = cm.tab10(np.linspace(0, 0.9, n_drones))
+    colors = plt.cm.get_cmap('tab10')(np.linspace(0, 0.9, n_drones))
 
     fig, ax = plt.subplots(figsize=(9, 5))
     plt.subplots_adjust(bottom=0.22)
 
     history = _run(kp0, kd0)
     t = history["t"]
-    # Payload trajectory accessed via reserved ID -1
     px, py = history[-1][:, 0], history[-1][:, 1]
 
     drone_lines = []
@@ -116,8 +117,8 @@ def plot_gain_response(params: dict):
 
     _refresh_title(kp0, kd0)
 
-    ax_kp = plt.axes([0.15, 0.10, 0.65, 0.03])
-    ax_kd = plt.axes([0.15, 0.04, 0.65, 0.03])
+    ax_kp = plt.axes((0.15, 0.10, 0.65, 0.03))
+    ax_kd = plt.axes((0.15, 0.04, 0.65, 0.03))
     slider_kp = Slider(ax_kp, "kp_alt", 0.1, 20.0, valinit=kp0, valstep=0.1)
     slider_kd = Slider(ax_kd, "kd_alt", 0.0, 20.0, valinit=kd0, valstep=0.1)
 
@@ -141,7 +142,7 @@ def plot_gain_response(params: dict):
     return slider_kp, slider_kd  # prevent garbage collection
 
 
-def plot_radius_vs_time(history, R: float = None, L0: float = None):
+def plot_radius_vs_time(history, R: float | None = None , L0: float | None = None):
     """
     Plot orbit radius r(t) = distance from each drone to the payload over time.
 
@@ -152,9 +153,8 @@ def plot_radius_vs_time(history, R: float = None, L0: float = None):
     L0      : cable rest length (drawn as a dotted reference line if provided)
     """
     n_drones = len(history["drones"])
-    colors = cm.tab10(np.linspace(0, 0.9, n_drones))
+    colors = plt.cm.get_cmap('tab10')(np.linspace(0, 0.9, n_drones))
     t = history["t"]
-    # Payload trajectory accessed via reserved ID -1
     px = history[-1][:, 0]
     py = history[-1][:, 1]
 
@@ -189,11 +189,10 @@ def animate_trajectories(history, stride: int = 10, trail_length: int = 50):
     trail_length : number of past frames shown as a fading tail per drone
     """
     n_drones = len(history["drones"])
-    colors = cm.tab10(np.linspace(0, 0.9, n_drones))
+    colors = plt.cm.get_cmap('tab10')(np.linspace(0, 0.9, n_drones))
 
     drones_x = [history["drones"][i][:, 0] for i in range(n_drones)]
     drones_y = [history["drones"][i][:, 1] for i in range(n_drones)]
-    # Payload trajectory accessed via reserved ID -1
     px = history[-1][:, 0]
     py = history[-1][:, 1]
 
@@ -251,99 +250,146 @@ def animate_trajectories(history, stride: int = 10, trail_length: int = 50):
     return anim
 
 
-def animate_trajectories_3d(history, stride: int = 10, trail_length: int = 50, params: dict = None):
+def animate_trajectories_3d(history, stride: int = 10, trail_length: int = 50, params: dict = {}):
     """
-    Animate drones orbiting the payload with cables in full 3D.
+    Animate the full mission trajectory in 3D.
 
-    Camera: angled isometric view (elev=25, azim=45) so the hanging
-    payload, cable geometry, and orbital motion are all clearly visible.
+    Features
+    --------
+    - Phase label updated every frame from history["phase"]
+    - Follow-cam in x during CRUISE so the formation stays centred
+    - Translucent ground plane at z=0
+    - Dashed altitude marker at z_payload_target (if params provided)
+    - Reference orbit circle during spin phases
 
     Parameters
     ----------
-    history      : dict returned by simulate()
+    history      : dict returned by simulate_mission()
     stride       : render every Nth timestep
     trail_length : number of past frames shown as a fading tail
-    params       : DEFAULT_PARAMS dict (used for reference-orbit overlay)
+    params       : DEFAULT_PARAMS dict
     """
-    n_drones = len(history["drones"])
-    colors = cm.tab10(np.linspace(0, 0.9, n_drones))
+    n_drones    = len(history["drones"])
+    colors      = plt.cm.get_cmap('tab10')(np.linspace(0, 0.9, n_drones))
+    has_phases  = "phase" in history
 
-    drones_xyz = [history["drones"][i][:, :3] for i in range(n_drones)]
+    drones_xyz  = [history["drones"][i][:, :3] for i in range(n_drones)]
     payload_xyz = history[-1][:, :3]
 
-    # Axis limits: give headroom around the orbital volume
+    # ------------------------------------------------------------------
+    # Static axis limits (half-width in xy, full z range)
+    # ------------------------------------------------------------------
     all_pos = np.vstack(drones_xyz + [payload_xyz])
-    max_xy = max(np.abs(all_pos[:, :2]).max(), 1.0)
-    max_z  = max(all_pos[:, 2].max(), 1.0)
-    pad    = max_xy * 0.3 + 0.5
-    xy_lim = max_xy + pad
-    z_lo   = min(all_pos[:, 2].min() - 0.5, -0.5)
-    z_hi   = max_z + pad
+    max_z   = max(all_pos[:, 2].max(), 1.0)
+    z_lo    = -1.0
+    z_hi    = max_z + 2.0
 
-    fig = plt.figure(figsize=(10, 8))
-    fig.patch.set_facecolor("#f5f5f5")
+    # xy view half-width: enough to see the orbit + a bit of cruise travel
+    xy_view = max(params.get("R", 3.0) * 1.8 if params else 6.0, 6.0)
+
+    # ------------------------------------------------------------------
+    # Figure / axes setup
+    # ------------------------------------------------------------------
+    fig = plt.figure(figsize=(12, 8))
+    fig.patch.set_facecolor("#f0f0f0")
     ax = fig.add_subplot(111, projection="3d")
-    ax.set_facecolor("#f5f5f5")
+    ax.set_facecolor("#f0f0f0")
     ax.view_init(elev=25, azim=45)
 
-    ax.set_xlim(-xy_lim, xy_lim)
-    ax.set_ylim(-xy_lim, xy_lim)
+    ax.set_xlim(-xy_view, xy_view)
+    ax.set_ylim(-xy_view, xy_view)
     ax.set_zlim(z_lo, z_hi)
     try:
-        ax.set_box_aspect([1, 1, (z_hi - z_lo) / (2 * xy_lim)])
+        ax.set_box_aspect([1, 1, (z_hi - z_lo) / (2 * xy_view)])
     except AttributeError:
         pass  # matplotlib < 3.3
 
     ax.set_xlabel("X [m]", labelpad=8)
     ax.set_ylabel("Y [m]", labelpad=8)
     ax.set_zlabel("Z [m]", labelpad=8)
-    ax.set_title("SPIN IT UP — 3D Formation Flight", fontsize=13, fontweight="bold", pad=12)
-    ax.grid(True, alpha=0.3)
+    ax.set_title("SPIN IT UP — Full Mission Trajectory", fontsize=13, fontweight="bold", pad=12)
+    ax.grid(True, alpha=0.25)
 
-    # Reference orbit circle at drone cruise altitude
+    # ------------------------------------------------------------------
+    # Static decorations
+    # ------------------------------------------------------------------
+
+    # Ground plane
+    gp = xy_view * 1.2
+    xx, yy = np.meshgrid([-gp, gp], [-gp, gp])
+    ax.plot_surface(xx, yy, np.zeros_like(xx), alpha=0.12, color="saddlebrown", zorder=0)
+
+    # Reference orbit circle (spin phases)
     if params is not None:
-        R_ref = params.get("R", xy_lim * 0.7)
-        z_ref = params.get("z_target", max_z * 0.8)
-        theta = np.linspace(0, 2 * np.pi, 200)
+        R_ref   = params.get("R", 3.0)
+        z_hover = params.get("z_hover", 3.0)
+        theta   = np.linspace(0, 2 * np.pi, 200)
         ax.plot(R_ref * np.cos(theta), R_ref * np.sin(theta),
-                np.full_like(theta, z_ref),
-                "--", color="gray", linewidth=0.8, alpha=0.5, zorder=1)
+                np.full_like(theta, z_hover),
+                "--", color="gray", linewidth=0.7, alpha=0.45, zorder=1)
 
-    # Create per-drone artists
-    drone_trails  = [ax.plot([], [], [], color=c, linewidth=1.0, alpha=0.35)[0] for c in colors]
+    # Target altitude marker
+    if params is not None:
+        z_tgt = params.get("z_payload_target", None)
+        if z_tgt is not None:
+            ax.plot([-gp, gp], [0, 0], [z_tgt, z_tgt],
+                    ":", color="steelblue", linewidth=1.0, alpha=0.5)
+            ax.text(gp * 0.9, 0, z_tgt, f" z={z_tgt:.0f} m",
+                    color="steelblue", fontsize=7, va="bottom")
+
+    # ------------------------------------------------------------------
+    # Animated artists
+    # ------------------------------------------------------------------
+    drone_trails  = [ax.plot([], [], [], color=c, linewidth=0.9, alpha=0.35)[0] for c in colors]
     drone_markers = [ax.plot([], [], [], "o", color=c, markersize=9,
-                             label=f"Drone {i}")[0]
-                     for i, c in enumerate(colors)]
-    cable_lines   = [ax.plot([], [], [], "-", color=c, linewidth=1.8, alpha=0.75)[0] for c in colors]
+                             label=f"Drone {i}")[0] for i, c in enumerate(colors)]
+    cable_lines   = [ax.plot([], [], [], "-", color=c, linewidth=1.8, alpha=0.7)[0] for c in colors]
 
     payload_marker, = ax.plot([], [], [], "ks", markersize=13, zorder=5, label="Payload")
-    time_text = ax.text2D(0.02, 0.95, "", transform=ax.transAxes, fontsize=10,
-                          color="#333333")
+    time_text = ax.text2D(0.02, 0.95, "", transform=ax.transAxes,
+                          fontsize=10, color="#222222",
+                          fontfamily="monospace")
 
     ax.legend(loc="upper right", fontsize=8, framealpha=0.7)
 
+    # ------------------------------------------------------------------
+    # Per-frame update
+    # ------------------------------------------------------------------
     n_frames = (len(history["t"]) - 1) // stride + 1
 
     def _update(frame):
-        k = min(frame * stride, len(history["t"]) - 1)
+        k           = min(frame * stride, len(history["t"]) - 1)
         trail_start = max(0, k - trail_length)
 
-        px, py, pz = payload_xyz[k]
+        px, py, pz  = payload_xyz[k]
+        t_now       = history["t"][k]
+        phase_label = history["phase"][k] if has_phases else ""
+
+        # Follow-cam in x during CRUISE
+        if phase_label == "CRUISE":
+            ax.set_xlim(px - xy_view, px + xy_view)
+            ax.set_ylim(-xy_view, xy_view)
+        else:
+            ax.set_xlim(-xy_view, xy_view)
+            ax.set_ylim(-xy_view, xy_view)
 
         for i in range(n_drones):
             xyz = drones_xyz[i]
-            drone_trails[i].set_data_3d(
+            # Line2D/Line3D compatibility: set x,y with set_data and z with set_3d_properties
+            drone_trails[i].set_data(
                 xyz[trail_start : k + 1, 0],
                 xyz[trail_start : k + 1, 1],
-                xyz[trail_start : k + 1, 2],
             )
-            drone_markers[i].set_data_3d([xyz[k, 0]], [xyz[k, 1]], [xyz[k, 2]])
-            cable_lines[i].set_data_3d(
-                [px, xyz[k, 0]], [py, xyz[k, 1]], [pz, xyz[k, 2]]
-            )
+            cast(Any, drone_trails[i]).set_3d_properties(xyz[trail_start : k + 1, 2])
+            drone_markers[i].set_data([xyz[k, 0]], [xyz[k, 1]])
+            cast(Any, drone_markers[i]).set_3d_properties([xyz[k, 2]])
+            cable_lines[i].set_data([px, xyz[k, 0]], [py, xyz[k, 1]])
+            cast(Any, cable_lines[i]).set_3d_properties([pz, xyz[k, 2]])
 
-        payload_marker.set_data_3d([px], [py], [pz])
-        time_text.set_text(f"t = {history['t'][k]:.2f} s")
+        payload_marker.set_data([px], [py])
+        cast(Any, payload_marker).set_3d_properties([pz])
+        time_text.set_text(f"t = {t_now:6.1f} s  |  {phase_label}")
+
         return drone_trails + drone_markers + cable_lines + [payload_marker, time_text]
 
     anim = animation.FuncAnimation(
