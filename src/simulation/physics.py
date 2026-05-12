@@ -22,25 +22,26 @@ def _unpack_state(state, drones, payload):
     payload.v = state[base + 3 : base + 6].copy()
 
 
-def _equations_of_motion(t, state, drones, payload, cables):
+def _equations_of_motion(t, state, drones, payload, cables, g):
     _unpack_state(state, drones, payload)
 
     n = len(drones)
     derivs = np.zeros(len(state))
     F_payload = np.zeros(3)
+    g_vec = np.array([0.0, 0.0, -g])
 
     for i, (drone, cable) in enumerate(zip(drones, cables)):
         f_on_payload, f_on_drone = cable.force_vectors()
         F_payload += f_on_payload
 
         F_thrust = drone.controller.compute_thrust(drone, payload)
-        a_drone = (f_on_drone + F_thrust) / drone.mass
+        a_drone = (f_on_drone + F_thrust) / drone.mass + g_vec
 
         base = i * 6
         derivs[base : base + 3] = drone.v
         derivs[base + 3 : base + 6] = a_drone
 
-    a_payload = F_payload / payload.mass
+    a_payload = F_payload / payload.mass + g_vec
     base = n * 6
     derivs[base : base + 3] = payload.v
     derivs[base + 3 : base + 6] = a_payload
@@ -64,9 +65,10 @@ def simulate(drones, payload, cables, params):
     t_start = params["t_start"]
     t_end = params["t_end"]
     t_eval = np.linspace(t_start, t_end, int((t_end - t_start) / params["dt"]) + 1)
+    g = params.get("g", 0.0)
 
     result = solve_ivp(
-        fun=lambda t, y: _equations_of_motion(t, y, drones, payload, cables),
+        fun=lambda t, y: _equations_of_motion(t, y, drones, payload, cables, g),
         t_span=(t_start, t_end),
         y0=y0,
         method="RK45",

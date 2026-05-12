@@ -7,8 +7,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.utils.initialise_objects import initialise_objects
 from src.utils.default_params import DEFAULT_PARAMS
 from src.utils.initial_states import get_initial_states
-from src.simulation.physics import compute_net_forces
-from src.visualizations.plot import animate_trajectories, plot_radius_vs_time, plot_gain_response
+from src.simulation.physics import compute_net_forces, simulate
+from src.visualizations.plot import animate_trajectories_3d, plot_radius_vs_time, plot_gain_response
 
 
 def main():
@@ -17,6 +17,7 @@ def main():
         R=DEFAULT_PARAMS["R"],
         L0=DEFAULT_PARAMS["L0"],
         payload_pos=np.array([0.0, 0.0, 0.0]),
+        z_target=DEFAULT_PARAMS["z_target"],
     )
     drones, payload, cables, high_level_controller = initialise_objects(initial_states)
 
@@ -89,7 +90,7 @@ def main():
 
     plot_gain_response(DEFAULT_PARAMS)
     plot_radius_vs_time(history, R=DEFAULT_PARAMS["R"], L0=DEFAULT_PARAMS["L0"])
-    animate_trajectories(history)
+    animate_trajectories_3d(history, params=DEFAULT_PARAMS)
 
 
 if __name__ == "__main__":

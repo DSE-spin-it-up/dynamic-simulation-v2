@@ -14,8 +14,9 @@ def test_initial_positions():
     # Setup
     for n_drones in range(2, 10):
         initial_states = get_initial_states(n_drones, R=DEFAULT_PARAMS["R"], L0=DEFAULT_PARAMS["L0"], payload_pos=np.zeros(3))
+        z_drone = DEFAULT_PARAMS["z_target"]
         expected_drone_positions = np.array([
-            [DEFAULT_PARAMS["R"] * np.cos(2 * np.pi * i / n_drones), DEFAULT_PARAMS["R"] * np.sin(2 * np.pi * i / n_drones), 0]
+            [DEFAULT_PARAMS["R"] * np.cos(2 * np.pi * i / n_drones), DEFAULT_PARAMS["R"] * np.sin(2 * np.pi * i / n_drones), z_drone]
             for i in range(n_drones)
         ])
         # Verify

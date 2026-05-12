@@ -8,24 +8,21 @@ def get_initial_states(
     R: float = DEFAULT_PARAMS["R"],
     L0: float = DEFAULT_PARAMS["L0"],
     payload_pos: np.ndarray = np.zeros(3),
+    z_target: float = DEFAULT_PARAMS["z_target"],
 ) -> dict:
     """
     Returns initial positions and velocities for all drones and the payload.
 
-    Drones are evenly spaced on a horizontal circle (x-z plane) of radius R,
-    placed at height h = sqrt(max(L0^2 - R^2, 0)) above the payload.
+    Drones are evenly spaced on a horizontal circle of radius R in the x-y plane,
+    at height z_target above the payload.
 
     Output:
         A dictionary containing initial states for each drone and the payload (velocity and position).
     """
     angles = np.linspace(0, 2 * np.pi, num_drones, endpoint=False)
 
-    # For 2D, we can just place the drones at the same height as the payload
-    drone_z = payload_pos[2]  
-
-    # FOR 3D
-    #h = np.sqrt(max(L0**2 - R**2, 0.0)) # Distance from drone to payload 
-    #drone_z = payload_pos[1] + h # Drone altitude
+    # z_target is the absolute drone altitude; payload starts at payload_pos[2]
+    drone_z = payload_pos[2] + z_target  # for payload at z=0 this equals z_target
 
     drone_positions = np.column_stack([
         R * np.cos(angles),  # x-coordinates drones
