@@ -21,7 +21,7 @@ def get_initial_states(
     angles = np.linspace(0, 2 * np.pi, num_drones, endpoint=False)
 
     # For 2D, we can just place the drones at the same height as the payload
-    drone_z = payload_pos[1]  
+    drone_z = payload_pos[2]  
 
     # FOR 3D
     #h = np.sqrt(max(L0**2 - R**2, 0.0)) # Distance from drone to payload 
