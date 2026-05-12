@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.animation as animation
 from matplotlib.widgets import Slider
+from mpl_toolkits.mplot3d import Axes3D  
 
 
 def plot_trajectories(history):
@@ -240,6 +241,109 @@ def animate_trajectories(history, stride: int = 10, trail_length: int = 50):
 
     anim = animation.FuncAnimation(
         fig, _update, frames=n_frames, interval=30, blit=True
+    )
+    plt.tight_layout()
+    plt.show()
+    return anim
+
+
+def animate_trajectories_3d(history, stride: int = 10, trail_length: int = 50, params: dict = None):
+    """
+    Animate drones orbiting the payload with cables in full 3D.
+
+    Camera: angled isometric view (elev=25, azim=45) so the hanging
+    payload, cable geometry, and orbital motion are all clearly visible.
+
+    Parameters
+    ----------
+    history      : dict returned by simulate()
+    stride       : render every Nth timestep
+    trail_length : number of past frames shown as a fading tail
+    params       : DEFAULT_PARAMS dict (used for reference-orbit overlay)
+    """
+    n_drones = len(history["drones"])
+    colors = cm.tab10(np.linspace(0, 0.9, n_drones))
+
+    drones_xyz = [history["drones"][i][:, :3] for i in range(n_drones)]
+    payload_xyz = history["payload"][:, :3]
+
+    # Axis limits: give headroom around the orbital volume
+    all_pos = np.vstack(drones_xyz + [payload_xyz])
+    max_xy = max(np.abs(all_pos[:, :2]).max(), 1.0)
+    max_z  = max(all_pos[:, 2].max(), 1.0)
+    pad    = max_xy * 0.3 + 0.5
+    xy_lim = max_xy + pad
+    z_lo   = min(all_pos[:, 2].min() - 0.5, -0.5)
+    z_hi   = max_z + pad
+
+    fig = plt.figure(figsize=(10, 8))
+    fig.patch.set_facecolor("#f5f5f5")
+    ax = fig.add_subplot(111, projection="3d")
+    ax.set_facecolor("#f5f5f5")
+    ax.view_init(elev=25, azim=45)
+
+    ax.set_xlim(-xy_lim, xy_lim)
+    ax.set_ylim(-xy_lim, xy_lim)
+    ax.set_zlim(z_lo, z_hi)
+    try:
+        ax.set_box_aspect([1, 1, (z_hi - z_lo) / (2 * xy_lim)])
+    except AttributeError:
+        pass  # matplotlib < 3.3
+
+    ax.set_xlabel("X [m]", labelpad=8)
+    ax.set_ylabel("Y [m]", labelpad=8)
+    ax.set_zlabel("Z [m]", labelpad=8)
+    ax.set_title("SPIN IT UP — 3D Formation Flight", fontsize=13, fontweight="bold", pad=12)
+    ax.grid(True, alpha=0.3)
+
+    # Reference orbit circle at drone cruise altitude
+    if params is not None:
+        R_ref = params.get("R", xy_lim * 0.7)
+        z_ref = params.get("z_target", max_z * 0.8)
+        theta = np.linspace(0, 2 * np.pi, 200)
+        ax.plot(R_ref * np.cos(theta), R_ref * np.sin(theta),
+                np.full_like(theta, z_ref),
+                "--", color="gray", linewidth=0.8, alpha=0.5, zorder=1)
+
+    # Create per-drone artists
+    drone_trails  = [ax.plot([], [], [], color=c, linewidth=1.0, alpha=0.35)[0] for c in colors]
+    drone_markers = [ax.plot([], [], [], "o", color=c, markersize=9,
+                             label=f"Drone {i}")[0]
+                     for i, c in enumerate(colors)]
+    cable_lines   = [ax.plot([], [], [], "-", color=c, linewidth=1.8, alpha=0.75)[0] for c in colors]
+
+    payload_marker, = ax.plot([], [], [], "ks", markersize=13, zorder=5, label="Payload")
+    time_text = ax.text2D(0.02, 0.95, "", transform=ax.transAxes, fontsize=10,
+                          color="#333333")
+
+    ax.legend(loc="upper right", fontsize=8, framealpha=0.7)
+
+    n_frames = (len(history["t"]) - 1) // stride + 1
+
+    def _update(frame):
+        k = min(frame * stride, len(history["t"]) - 1)
+        trail_start = max(0, k - trail_length)
+
+        px, py, pz = payload_xyz[k]
+
+        for i in range(n_drones):
+            xyz = drones_xyz[i]
+            drone_trails[i].set_data_3d(
+                xyz[trail_start : k + 1, 0],
+                xyz[trail_start : k + 1, 1],
+                xyz[trail_start : k + 1, 2],
+            )
+            drone_markers[i].set_data_3d([xyz[k, 0]], [xyz[k, 1]], [xyz[k, 2]])
+            cable_lines[i].set_data_3d(
+                [px, xyz[k, 0]], [py, xyz[k, 1]], [pz, xyz[k, 2]]
+            )
+
+        payload_marker.set_data_3d([px], [py], [pz])
+        time_text.set_text(f"t = {history['t'][k]:.2f} s")
+        return drone_trails + drone_markers + cable_lines + [payload_marker, time_text]
+
+    anim = animation.FuncAnimation(
+        fig, _update, frames=n_frames, interval=50, blit=False
     )
     plt.tight_layout()
     plt.show()
