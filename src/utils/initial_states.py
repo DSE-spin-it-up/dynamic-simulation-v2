@@ -39,15 +39,16 @@ def get_initial_states(
 
     states = {}
 
-    # Add drones
+    # Add drones with numeric IDs (0, 1, 2, ...)
     for i in range(num_drones):
         states[i] = {
             "position": drone_positions[i],
             "velocity": drone_velocities[i],
         }
 
-    # Add payload
-    states["payload"] = {
+    # Add payload with reserved ID -1
+    # CONVENTION: Payload always uses id=-1. This is reserved and should not be used for any drone.
+    states[-1] = {
         "position": payload_pos.copy(),
         "velocity": payload_velocity,
     }

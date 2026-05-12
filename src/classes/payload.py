@@ -1,8 +1,19 @@
 import numpy as np
 
+from ..utils.default_params import DEFAULT_PARAMS
+
 class Payload():
-    def __init__(self, mass: float, initial_position: np.ndarray, initial_velocity: np.ndarray = np.array([0, 0, 0])):
-        self.id = None
+    def __init__(self, id: int, mass: float, initial_position: np.ndarray, initial_velocity: np.ndarray = np.array([0, 0, 0])):
+        """
+        Initialize a Payload object.
+        
+        Parameters
+        ----------
+        id : int
+            The unique identifier for the payload. By convention, the payload ALWAYS uses id=-1.
+            This distinguishes it from drone IDs (which are 0, 1, 2, ...).
+        """
+        self.id = id
         self.mass = mass
         self.position = initial_position
         self.v = initial_velocity
@@ -42,3 +53,17 @@ class Payload():
 
     # ----------------------------------------------------------------------------------
     
+    def compute_aero_forces(self) -> np.ndarray:
+        """Placeholder for aerodynamic forces. Currently returns zero."""
+        return np.zeros(3)
+
+    def compute_gravity_force(self) -> np.ndarray:
+        """Compute gravitational force vector [0, 0, -mg]."""
+        return np.array([0, 0, -self.mass * 9.81])
+
+    def apply_force(self, force: np.ndarray):
+        """Update velocity and position based on applied force."""
+        # Simple Euler integration for demonstration (not used in actual simulation)
+        acceleration = force / self.mass
+        self.v += acceleration * DEFAULT_PARAMS["dt"]  # Assume small time step for this update
+        self.position += self.v * DEFAULT_PARAMS["dt"]

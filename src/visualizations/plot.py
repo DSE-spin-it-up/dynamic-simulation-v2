@@ -12,7 +12,7 @@ def plot_trajectories(history):
     Parameters
     ----------
     history : dict returned by simulate()
-        Keys: 't', 'drones' (list of N_times x 6 arrays), 'payload' (N_times x 6 array)
+        Keys: 't', 'drones' (list of N_times x 6 arrays), -1 (N_times x 6 array for payload)
     """
     n_drones = len(history["drones"])
     colors = cm.tab10(np.linspace(0, 0.9, n_drones))
@@ -25,7 +25,8 @@ def plot_trajectories(history):
         ax.plot(x[0], y[0], "o", color=color, markersize=6)   # start
         ax.plot(x[-1], y[-1], "s", color=color, markersize=6)  # end
 
-    px, py = history["payload"][:, 0], history["payload"][:, 1]
+    # Payload trajectory accessed via reserved ID -1
+    px, py = history[-1][:, 0], history[-1][:, 1]
     ax.plot(px, py, "k-", linewidth=1.5, label="Payload")
     ax.plot(px[0], py[0], "ko", markersize=8)
     ax.plot(px[-1], py[-1], "ks", markersize=8)
@@ -60,7 +61,7 @@ def plot_gain_response(params: dict):
         initial_states = get_initial_states(
             num_drones=p["n_drones"], R=p["R"], L0=p["L0"], payload_pos=np.zeros(3)
         )
-        drones, payload, cables = initialise_objects(initial_states)
+        drones, payload, cables, high_level_controller = initialise_objects(initial_states)
         return simulate(drones, payload, cables, p)
 
     def _r_eq(kp):
@@ -80,7 +81,8 @@ def plot_gain_response(params: dict):
 
     history = _run(kp0, kd0)
     t = history["t"]
-    px, py = history["payload"][:, 0], history["payload"][:, 1]
+    # Payload trajectory accessed via reserved ID -1
+    px, py = history[-1][:, 0], history[-1][:, 1]
 
     drone_lines = []
     for i, color in enumerate(colors):
@@ -122,7 +124,7 @@ def plot_gain_response(params: dict):
         kp, kd = slider_kp.val, slider_kd.val
         h = _run(kp, kd)
         t_new = h["t"]
-        px_new, py_new = h["payload"][:, 0], h["payload"][:, 1]
+        px_new, py_new = h[-1][:, 0], h[-1][:, 1]
         for i, line in enumerate(drone_lines):
             r = np.hypot(h["drones"][i][:, 0] - px_new, h["drones"][i][:, 1] - py_new)
             line.set_data(t_new, r)
@@ -151,8 +153,9 @@ def plot_radius_vs_time(history, R: float = None, L0: float = None):
     n_drones = len(history["drones"])
     colors = cm.tab10(np.linspace(0, 0.9, n_drones))
     t = history["t"]
-    px = history["payload"][:, 0]
-    py = history["payload"][:, 1]
+    # Payload trajectory accessed via reserved ID -1
+    px = history[-1][:, 0]
+    py = history[-1][:, 1]
 
     _, ax = plt.subplots(figsize=(9, 4))
 
@@ -189,8 +192,9 @@ def animate_trajectories(history, stride: int = 10, trail_length: int = 50):
 
     drones_x = [history["drones"][i][:, 0] for i in range(n_drones)]
     drones_y = [history["drones"][i][:, 1] for i in range(n_drones)]
-    px = history["payload"][:, 0]
-    py = history["payload"][:, 1]
+    # Payload trajectory accessed via reserved ID -1
+    px = history[-1][:, 0]
+    py = history[-1][:, 1]
 
     all_x = np.concatenate(drones_x + [px])
     all_y = np.concatenate(drones_y + [py])

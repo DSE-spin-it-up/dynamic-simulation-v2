@@ -50,6 +50,7 @@ def _equations_of_motion(t, state, drones, payload, cables):
 
 def simulate(drones, payload, cables, params):
     """
+    Legacy simulation function using RK45 integration. This is currently not used in the main code, but is kept for reference and potential future use.
     Integrate equations of motion with RK45 and return trajectory history.
 
     Returns
@@ -57,7 +58,7 @@ def simulate(drones, payload, cables, params):
     dict with keys:
         't'      : 1-D array of output times
         'drones' : list of (N_times x 6) arrays — [x, y, z, vx, vy, vz] per drone
-        'payload': (N_times x 6) array — [x, y, z, vx, vy, vz]
+        -1       : (N_times x 6) array — [x, y, z, vx, vy, vz] for payload
     """
     y0 = _pack_state(drones, payload)
     t_start = params["t_start"]
@@ -77,8 +78,20 @@ def simulate(drones, payload, cables, params):
     _unpack_state(result.y[:, -1], drones, payload)
 
     n = len(drones)
-    history = {"t": result.t, "drones": [], "payload": result.y[n * 6 : n * 6 + 6, :].T}
+    history = {"t": result.t, "drones": [], -1: result.y[n * 6 : n * 6 + 6, :].T}
     for i in range(n):
         history["drones"].append(result.y[i * 6 : i * 6 + 6, :].T)
 
     return history
+
+def compute_net_forces(forces_dict: dict[int, dict[str, np.ndarray]]) -> dict[int, np.ndarray]:
+    """
+    Compute net force vector for each object by summing all force components.
+    """
+    net_forces = {}
+    for obj_id, components in forces_dict.items():
+        net_force = np.zeros(3)
+        for _, force_vector in components.items():
+            net_force += force_vector
+        net_forces[obj_id] = net_force
+    return net_forces

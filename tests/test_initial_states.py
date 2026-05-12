@@ -19,8 +19,9 @@ def test_initial_positions():
             for i in range(n_drones)
         ])
         # Verify
-        assert initial_states["payload"]["position"].shape == (3,)
-        assert np.allclose(initial_states["payload"]["position"], np.zeros(3))
+        # Payload is accessed with ID -1 (reserved ID)
+        assert initial_states[-1]["position"].shape == (3,)
+        assert np.allclose(initial_states[-1]["position"], np.zeros(3))
         for i in range(n_drones):
             assert initial_states[i]["position"].shape == (3,)
             assert np.allclose(initial_states[i]["position"], expected_drone_positions[i])
@@ -31,8 +32,8 @@ def test_initial_velocities():
     initial_states = get_initial_states(n_drones, R=DEFAULT_PARAMS["R"], L0=DEFAULT_PARAMS["L0"], payload_pos=np.zeros(3))
     
     # Verify
-    assert initial_states["payload"]["velocity"].shape == (3,)
-    assert np.allclose(initial_states["payload"]["velocity"], np.zeros(3))
+    assert initial_states[-1]["velocity"].shape == (3,)
+    assert np.allclose(initial_states[-1]["velocity"], np.zeros(3))
     for i in range(n_drones):
         assert initial_states[i]["velocity"].shape == (3,)
         assert np.allclose(initial_states[i]["velocity"], np.zeros(3))
@@ -43,7 +44,7 @@ def test_initialise_objects():
     initial_states = get_initial_states(n_drones, R=DEFAULT_PARAMS["R"], L0=DEFAULT_PARAMS["L0"], payload_pos=np.zeros(3))
     
     # Act
-    drones, payload, cables = initialise_objects(initial_states)
+    drones, payload, cables, high_level_controller = initialise_objects(initial_states)
     
     # Verify
     assert len(drones) == n_drones

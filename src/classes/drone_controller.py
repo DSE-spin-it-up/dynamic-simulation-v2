@@ -37,3 +37,7 @@ class DroneController:
         thrust = F_cf + F_r + F_t
         thrust[2] = 0.0
         return thrust
+    
+    def update(self, t: float, drone, payload) -> np.ndarray:
+        thrust = self.compute_thrust(drone, payload)
+        return thrust
