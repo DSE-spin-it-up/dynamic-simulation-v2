@@ -269,7 +269,7 @@ def animate_trajectories_3d(history, stride: int = 10, trail_length: int = 50, p
     colors = cm.tab10(np.linspace(0, 0.9, n_drones))
 
     drones_xyz = [history["drones"][i][:, :3] for i in range(n_drones)]
-    payload_xyz = history["payload"][:, :3]
+    payload_xyz = history[-1][:, :3]
 
     # Axis limits: give headroom around the orbital volume
     all_pos = np.vstack(drones_xyz + [payload_xyz])

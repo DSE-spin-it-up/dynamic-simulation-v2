@@ -43,18 +43,3 @@ class Drone():
         return self.position[2]
 
     # ----------------------------------------------------------------------------------
-
-    def compute_aero_forces(self) -> np.ndarray:
-        """Placeholder for aerodynamic forces. Currently returns zero."""
-        return np.zeros(3)
-    
-    def compute_gravity_force(self) -> np.ndarray:
-        """Compute gravitational force vector [0, 0, -mg]."""
-        return np.array([0, 0, -self.mass * 9.81])
-
-    def apply_force(self, force: np.ndarray):
-        """Update velocity and position based on applied force."""
-        # Simple Euler integration for demonstration (not used in actual simulation)
-        acceleration = force / self.mass
-        self.v += acceleration * DEFAULT_PARAMS["dt"]  # Assume small time step for this update
-        self.position += self.v * DEFAULT_PARAMS["dt"]

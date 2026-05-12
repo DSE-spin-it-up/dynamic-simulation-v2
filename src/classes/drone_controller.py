@@ -35,13 +35,6 @@ class DroneController:
         omega_err = self.params["omega_target"] - omega
         F_tangential = drone.mass * self.params["R"] * self.params["k_omega"] * omega_err * t_hat
 
-        thrust = F_cf + F_r + F_t
-        thrust[2] = 0.0
-        return thrust
-    
-    def update(self, t: float, drone, payload) -> np.ndarray:
-        thrust = self.compute_thrust(drone, payload)
-        return thrust
         # Cable feedforward: cancel the cable's pull so PD loops act as if no cable is attached
         r_vec_3d = drone.position - payload.position
         L_cable = np.linalg.norm(r_vec_3d)
@@ -62,3 +55,7 @@ class DroneController:
         thrust = F_centripetal + F_radial + F_tangential + F_cancel_cable_inward_pull + F_cancel_cable_downward_pull + F_altitude
 
         return (thrust)
+    
+    def update(self, t: float, drone, payload) -> np.ndarray:
+        thrust = self.compute_thrust(drone, payload)
+        return thrust

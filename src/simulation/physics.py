@@ -1,6 +1,11 @@
 import numpy as np
 from scipy.integrate import solve_ivp
 
+from src.classes.cable import Cable
+from src.classes.drone import Drone
+from src.classes.payload import Payload
+from src.utils.default_params import DEFAULT_PARAMS
+
 
 def _pack_state(drones, payload):
     parts = []
@@ -86,6 +91,51 @@ def simulate(drones, payload, cables, params):
 
     return history
 
+def compute_gravity_force(mass: float) -> np.ndarray:
+    """Compute gravitational force vector [0, 0, -mg]."""
+    return np.array([0, 0, -mass * 9.81])
+
+def compute_drone_aero_forces(drone: Drone) -> np.ndarray:
+    """Placeholder for drone aerodynamic forces. Currently returns zero."""
+    return np.zeros(3)
+
+def compute_payload_aero_forces(payload: Payload) -> np.ndarray:
+    """Placeholder for payload aerodynamic forces. Currently returns zero."""
+    return np.zeros(3)
+
+def compute_forces(drones: list[Drone], cables: list[Cable], payload: Payload):
+    """
+    Calculate all forces acting on drones and payload at the current state.
+    Returns a dictionary of force components for each object.
+    """
+    # Compute forces
+    forces_snapshot = {id: {} for id in [drone.id for drone in drones]}
+    forces_snapshot[-1] = {} # Payload forces accessed with ID -1
+        
+    # For each cable, compute forces and apply to payload and drone
+    forces_snapshot[-1]["cable_tension"] = np.zeros(3) # Initialize payload cable tension
+    for cable in cables:
+        # There is only one cable per drone, several for the payload
+        force_payload, force_drone = cable.force_vectors()
+        forces_snapshot[-1]["cable_tension"] += force_payload
+        forces_snapshot[cable.drone.id]["cable_tension"] = force_drone
+
+    # Aero forces for drones and payload
+    for drone in drones:
+        aero_force = compute_drone_aero_forces(drone)
+        forces_snapshot[drone.id]["aero"] = aero_force
+    aero_force_payload = compute_payload_aero_forces(payload)
+    forces_snapshot[-1]["aero"] = aero_force_payload
+
+    # Gravity forces for drones and payload
+    for drone in drones:
+        gravity_force = compute_gravity_force(drone.mass)
+        forces_snapshot[drone.id]["gravity"] = gravity_force
+    gravity_force_payload = compute_gravity_force(payload.mass)
+    forces_snapshot[-1]["gravity"] = gravity_force_payload
+
+    return forces_snapshot
+
 def compute_net_forces(forces_dict: dict[int, dict[str, np.ndarray]]) -> dict[int, np.ndarray]:
     """
     Compute net force vector for each object by summing all force components.
@@ -97,3 +147,11 @@ def compute_net_forces(forces_dict: dict[int, dict[str, np.ndarray]]) -> dict[in
             net_force += force_vector
         net_forces[obj_id] = net_force
     return net_forces
+
+def update_state(object: Drone | Payload, net_force: np.ndarray) -> None:
+    """
+    Update the state of a drone or payload based on the net force acting on it.
+    """
+    acceleration = net_force / object.mass
+    object.v += acceleration * DEFAULT_PARAMS["dt"]
+    object.position += object.v * DEFAULT_PARAMS["dt"]

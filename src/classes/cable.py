@@ -17,6 +17,8 @@ class Cable():
             f"Cable object, id: {self.id}, length [m]: {self.length}, stiffness [N/m]: {self.stiffness}, damping [N s/m]: {self.damping}\n"
             f"Assigned nodes\n  n1: {self.payload}\n  n2: {self.drone}\n"
         )
+    
+    #TODO: in the future, move the cable physics calculation to pyisics.py
 
     def __relative_pos(self):
         return np.array([self.drone.position - self.payload.position])
