@@ -19,7 +19,7 @@ def plot_trajectories(history):
         Keys: 't', 'drones' (list of N_times x 6 arrays), 'payload' (N_times x 6 array)
     """
     n_drones = len(history["drones"])
-    colors = plt.cm.get_cmap('tab10')(np.linspace(0, 0.9, n_drones))
+    colors = plt.get_cmap('tab10')(np.linspace(0, 0.9, n_drones))
 
     _, ax = plt.subplots(figsize=(7, 7))
 
@@ -153,7 +153,7 @@ def plot_radius_vs_time(history, R: float | None = None , L0: float | None = Non
     L0      : cable rest length (drawn as a dotted reference line if provided)
     """
     n_drones = len(history["drones"])
-    colors = plt.cm.get_cmap('tab10')(np.linspace(0, 0.9, n_drones))
+    colors = plt.get_cmap('tab10')(np.linspace(0, 0.9, n_drones))
     t = history["t"]
     px = history[-1][:, 0]
     py = history[-1][:, 1]
@@ -189,7 +189,7 @@ def animate_trajectories(history, stride: int = 10, trail_length: int = 50):
     trail_length : number of past frames shown as a fading tail per drone
     """
     n_drones = len(history["drones"])
-    colors = plt.cm.get_cmap('tab10')(np.linspace(0, 0.9, n_drones))
+    colors = plt.get_cmap('tab10')(np.linspace(0, 0.9, n_drones))
 
     drones_x = [history["drones"][i][:, 0] for i in range(n_drones)]
     drones_y = [history["drones"][i][:, 1] for i in range(n_drones)]
@@ -250,151 +250,238 @@ def animate_trajectories(history, stride: int = 10, trail_length: int = 50):
     return anim
 
 
-def animate_trajectories_3d(history, stride: int = 10, trail_length: int = 50, params: dict = {}):
+def animate_trajectories_3d(
+    history,
+    stride: int = 10,
+    trail_length: int = 10,
+    params: dict = {},
+):
     """
-    Animate the full mission trajectory in 3D.
+    Faster 3D animation version.
 
-    Features
-    --------
-    - Phase label updated every frame from history["phase"]
-    - Follow-cam in x during CRUISE so the formation stays centred
-    - Translucent ground plane at z=0
-    - Dashed altitude marker at z_payload_target (if params provided)
-    - Reference orbit circle during spin phases
-
-    Parameters
-    ----------
-    history      : dict returned by simulate_mission()
-    stride       : render every Nth timestep
-    trail_length : number of past frames shown as a fading tail
-    params       : DEFAULT_PARAMS dict
+    Main optimisations
+    ------------------
+    - No dynamic axis updates
+    - No plot_surface()
+    - Shorter trails
+    - Larger stride
+    - No transparency
+    - Fewer redraw-heavy operations
     """
-    n_drones    = len(history["drones"])
-    colors      = plt.cm.get_cmap('tab10')(np.linspace(0, 0.9, n_drones))
-    has_phases  = "phase" in history
 
-    drones_xyz  = [history["drones"][i][:, :3] for i in range(n_drones)]
+    from matplotlib import animation
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from typing import Any, cast
+
+    n_drones = len(history["drones"])
+    colors = plt.get_cmap('tab10')(np.linspace(0, 0.9, n_drones))
+
+    drones_xyz = [history["drones"][i][:, :3] for i in range(n_drones)]
     payload_xyz = history[-1][:, :3]
 
+    has_phases = "phase" in history
+
     # ------------------------------------------------------------------
-    # Static axis limits (half-width in xy, full z range)
+    # Axis limits
     # ------------------------------------------------------------------
+
     all_pos = np.vstack(drones_xyz + [payload_xyz])
-    max_z   = max(all_pos[:, 2].max(), 1.0)
-    z_lo    = -1.0
-    z_hi    = max_z + 2.0
 
-    # xy view half-width: enough to see the orbit + a bit of cruise travel
-    xy_view = max(params.get("R", 3.0) * 1.8 if params else 6.0, 6.0)
+    x_min, x_max = np.min(all_pos[:, 0]), np.max(all_pos[:, 0])
+    y_min, y_max = np.min(all_pos[:, 1]), np.max(all_pos[:, 1])
+    z_min, z_max = np.min(all_pos[:, 2]), np.max(all_pos[:, 2])
+
+    pad = 1.0
 
     # ------------------------------------------------------------------
-    # Figure / axes setup
+    # Figure
     # ------------------------------------------------------------------
-    fig = plt.figure(figsize=(12, 8))
-    fig.patch.set_facecolor("#f0f0f0")
+
+    fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection="3d")
-    ax.set_facecolor("#f0f0f0")
-    ax.view_init(elev=25, azim=45)
 
-    ax.set_xlim(-xy_view, xy_view)
-    ax.set_ylim(-xy_view, xy_view)
-    ax.set_zlim(z_lo, z_hi)
+    ax.set_xlim(x_min - pad, x_max + pad)
+    ax.set_ylim(y_min - pad, y_max + pad)
+    ax.set_zlim(min(0, z_min - pad), z_max + pad)
+
     try:
-        ax.set_box_aspect([1, 1, (z_hi - z_lo) / (2 * xy_view)])
+        ax.set_box_aspect(
+            [
+                x_max - x_min,
+                y_max - y_min,
+                z_max - z_min + 1e-6,
+            ]
+        )
     except AttributeError:
-        pass  # matplotlib < 3.3
+        pass
 
-    ax.set_xlabel("X [m]", labelpad=8)
-    ax.set_ylabel("Y [m]", labelpad=8)
-    ax.set_zlabel("Z [m]", labelpad=8)
-    ax.set_title("SPIN IT UP — Full Mission Trajectory", fontsize=13, fontweight="bold", pad=12)
-    ax.grid(True, alpha=0.25)
+    ax.set_xlabel("X [m]")
+    ax.set_ylabel("Y [m]")
+    ax.set_zlabel("Z [m]")
+
+    ax.set_title("Spin it up!")
+
+    # Keep grid simple
+    ax.grid(True)
 
     # ------------------------------------------------------------------
-    # Static decorations
+    # Optional reference orbit
     # ------------------------------------------------------------------
 
-    # Ground plane
-    gp = xy_view * 1.2
-    xx, yy = np.meshgrid([-gp, gp], [-gp, gp])
-    ax.plot_surface(xx, yy, np.zeros_like(xx), alpha=0.12, color="saddlebrown", zorder=0)
+    if params:
+        R_ref = params.get("R", None)
+        z_hover = params.get("z_hover", None)
 
-    # Reference orbit circle (spin phases)
-    if params is not None:
-        R_ref   = params.get("R", 3.0)
-        z_hover = params.get("z_hover", 3.0)
-        theta   = np.linspace(0, 2 * np.pi, 200)
-        ax.plot(R_ref * np.cos(theta), R_ref * np.sin(theta),
+        if R_ref is not None and z_hover is not None:
+            theta = np.linspace(0, 2 * np.pi, 100)
+
+            ax.plot(
+                R_ref * np.cos(theta),
+                R_ref * np.sin(theta),
                 np.full_like(theta, z_hover),
-                "--", color="gray", linewidth=0.7, alpha=0.45, zorder=1)
-
-    # Target altitude marker
-    if params is not None:
-        z_tgt = params.get("z_payload_target", None)
-        if z_tgt is not None:
-            ax.plot([-gp, gp], [0, 0], [z_tgt, z_tgt],
-                    ":", color="steelblue", linewidth=1.0, alpha=0.5)
-            ax.text(gp * 0.9, 0, z_tgt, f" z={z_tgt:.0f} m",
-                    color="steelblue", fontsize=7, va="bottom")
+                "--",
+                linewidth=1.0,
+                color="gray",
+            )
 
     # ------------------------------------------------------------------
     # Animated artists
     # ------------------------------------------------------------------
-    drone_trails  = [ax.plot([], [], [], color=c, linewidth=0.9, alpha=0.35)[0] for c in colors]
-    drone_markers = [ax.plot([], [], [], "o", color=c, markersize=9,
-                             label=f"Drone {i}")[0] for i, c in enumerate(colors)]
-    cable_lines   = [ax.plot([], [], [], "-", color=c, linewidth=1.8, alpha=0.7)[0] for c in colors]
 
-    payload_marker, = ax.plot([], [], [], "ks", markersize=13, zorder=5, label="Payload")
-    time_text = ax.text2D(0.02, 0.95, "", transform=ax.transAxes,
-                          fontsize=10, color="#222222",
-                          fontfamily="monospace")
+    drone_trails = []
+    drone_markers = []
+    cable_lines = []
 
-    ax.legend(loc="upper right", fontsize=8, framealpha=0.7)
+    for i, color in enumerate(colors):
+
+        trail = ax.plot(
+            [],
+            [],
+            [],
+            linewidth=1.0,
+            color=color,
+            antialiased=False,
+        )[0]
+
+        marker = ax.plot(
+            [],
+            [],
+            [],
+            "o",
+            color=color,
+            markersize=6,
+            antialiased=False,
+            label=f"Drone {i}",
+        )[0]
+
+        cable = ax.plot(
+            [],
+            [],
+            [],
+            "-",
+            linewidth=1.0,
+            color=color,
+            antialiased=False,
+        )[0]
+
+        drone_trails.append(trail)
+        drone_markers.append(marker)
+        cable_lines.append(cable)
+
+    payload_marker = ax.plot(
+        [],
+        [],
+        [],
+        "ks",
+        markersize=8,
+        label="Payload",
+    )[0]
+
+    time_text = ax.text2D(
+        0.02,
+        0.95,
+        "",
+        transform=ax.transAxes,
+        fontsize=10,
+        family="monospace",
+    )
+
+    ax.legend(loc="upper right")
 
     # ------------------------------------------------------------------
-    # Per-frame update
+    # Animation update
     # ------------------------------------------------------------------
+
     n_frames = (len(history["t"]) - 1) // stride + 1
 
     def _update(frame):
-        k           = min(frame * stride, len(history["t"]) - 1)
+
+        k = min(frame * stride, len(history["t"]) - 1)
+
         trail_start = max(0, k - trail_length)
 
-        px, py, pz  = payload_xyz[k]
-        t_now       = history["t"][k]
-        phase_label = history["phase"][k] if has_phases else ""
-
-        # Follow-cam in x during CRUISE
-        if phase_label == "CRUISE":
-            ax.set_xlim(px - xy_view, px + xy_view)
-            ax.set_ylim(-xy_view, xy_view)
-        else:
-            ax.set_xlim(-xy_view, xy_view)
-            ax.set_ylim(-xy_view, xy_view)
+        px, py, pz = payload_xyz[k]
 
         for i in range(n_drones):
+
             xyz = drones_xyz[i]
-            # Line2D/Line3D compatibility: set x,y with set_data and z with set_3d_properties
-            drone_trails[i].set_data(
-                xyz[trail_start : k + 1, 0],
-                xyz[trail_start : k + 1, 1],
-            )
-            cast(Any, drone_trails[i]).set_3d_properties(xyz[trail_start : k + 1, 2])
+
+            xs = xyz[trail_start : k + 1, 0]
+            ys = xyz[trail_start : k + 1, 1]
+            zs = xyz[trail_start : k + 1, 2]
+
+            # Trail
+            drone_trails[i].set_data(xs, ys)
+            cast(Any, drone_trails[i]).set_3d_properties(zs)
+
+            # Marker
             drone_markers[i].set_data([xyz[k, 0]], [xyz[k, 1]])
             cast(Any, drone_markers[i]).set_3d_properties([xyz[k, 2]])
-            cable_lines[i].set_data([px, xyz[k, 0]], [py, xyz[k, 1]])
-            cast(Any, cable_lines[i]).set_3d_properties([pz, xyz[k, 2]])
 
+            # Cable
+            cable_lines[i].set_data(
+                [px, xyz[k, 0]],
+                [py, xyz[k, 1]],
+            )
+
+            cast(Any, cable_lines[i]).set_3d_properties(
+                [pz, xyz[k, 2]]
+            )
+
+        # Payload
         payload_marker.set_data([px], [py])
         cast(Any, payload_marker).set_3d_properties([pz])
-        time_text.set_text(f"t = {t_now:6.1f} s  |  {phase_label}")
 
-        return drone_trails + drone_markers + cable_lines + [payload_marker, time_text]
+        # Time label
+        label = f"t = {history['t'][k]:6.2f} s"
+
+        if has_phases:
+            label += f" | {history['phase'][k]}"
+
+        time_text.set_text(label)
+
+        return (
+            drone_trails
+            + drone_markers
+            + cable_lines
+            + [payload_marker, time_text]
+        )
+
+
+    from src.utils.default_params import DEFAULT_PARAMS
+    dt = DEFAULT_PARAMS.get("dt", 0.01)
+    interval_ms = max(1, int(round(stride * dt * 1000)))
 
     anim = animation.FuncAnimation(
-        fig, _update, frames=n_frames, interval=50, blit=False
+        fig,
+        _update,
+        frames=n_frames,
+        interval=interval_ms,
+        blit=False,  # othersiwe the computation time goes crazy
     )
+
     plt.tight_layout()
     plt.show()
+
     return anim
