@@ -39,12 +39,20 @@ class DroneController:
         r_vec_3d = drone.position - payload.position
         L_cable = np.linalg.norm(r_vec_3d)
         if L_cable > self.params["L0"]:
+            # Spring force feedforward
             T_cable = self.params["k_cable"] * (L_cable - self.params["L0"])
             F_cancel_cable_inward_pull   = T_cable * (r / L_cable) * r_hat
             F_cancel_cable_downward_pull = T_cable * r_vec_3d[2] / L_cable * z_hat
+            
+            # Damping force feedforward
+            u_cable = r_vec_3d / L_cable  # unit vector along cable
+            v_rel = drone.v - payload.v  # relative velocity
+            v_rel_along_cable = np.dot(v_rel, u_cable)  # projection along cable
+            F_cancel_cable_damping = self.params["d_cable"] * v_rel_along_cable * u_cable
         else:
             F_cancel_cable_inward_pull   = np.zeros(3)
             F_cancel_cable_downward_pull = np.zeros(3)
+            F_cancel_cable_damping       = np.zeros(3)
 
         # Altitude PD: holds drone at absolute z_target
         z_err = drone.z - self.params["z_target"]
