@@ -23,7 +23,7 @@ def initialise_objects(initial_states: dict[int, dict[str, np.ndarray]]) -> tupl
     drones = []
     cables = []
     for id, state in initial_states.items():
-        if not isinstance(id, int):
+        if id == -1:  # Skip payload
             continue
         drone = Drone(id=id, mass=DEFAULT_PARAMS["m_drone"], initial_position=state["position"], initial_velocity=state["velocity"])
         drones.append(drone)
