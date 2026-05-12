@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.animation as animation
+from matplotlib.widgets import Slider
 
 
 def plot_trajectories(history):
@@ -34,6 +35,140 @@ def plot_trajectories(history):
     ax.set_title("Drone trajectories — horizontal plane (x-y)")
     ax.legend(loc="upper right", fontsize=8)
     ax.set_aspect("equal")
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_gain_response(params: dict):
+    """
+    Interactive slider plot: drag kp_alt / kd_alt and watch the radius response update live.
+
+    Shows for each gain combination:
+      - r(t) for every drone
+      - Reference lines: target R, cable rest length L0, analytical equilibrium r_eq
+      - Title: damping ratio ζ, r_eq value, and damping regime
+    """
+    from ..utils.initial_states import get_initial_states
+    from ..utils.initialise_objects import initialise_objects
+    from ..simulation.physics import simulate
+
+    t_end = min(params["t_end"], 15.0)
+
+    def _run(kp, kd):
+        p = {**params, "kp_alt": kp, "kd_alt": kd, "t_end": t_end}
+        initial_states = get_initial_states(
+            num_drones=p["n_drones"], R=p["R"], L0=p["L0"], payload_pos=np.zeros(3)
+        )
+        drones, payload, cables = initialise_objects(initial_states)
+        return simulate(drones, payload, cables, p)
+
+    def _r_eq(kp):
+        k, L0, m, R = params["k_cable"], params["L0"], params["m_drone"], params["R"]
+        return (k * L0 + m * kp * R) / (k + m * kp)
+
+    def _zeta(kp, kd):
+        return kd / (2.0 * np.sqrt(max(kp, 1e-9)))
+
+    kp0, kd0 = params["kp_alt"], params["kd_alt"]
+    R_ref, L0_ref = params["R"], params["L0"]
+    n_drones = params["n_drones"]
+    colors = cm.tab10(np.linspace(0, 0.9, n_drones))
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    plt.subplots_adjust(bottom=0.22)
+
+    history = _run(kp0, kd0)
+    t = history["t"]
+    px, py = history["payload"][:, 0], history["payload"][:, 1]
+
+    drone_lines = []
+    for i, color in enumerate(colors):
+        r = np.hypot(history["drones"][i][:, 0] - px, history["drones"][i][:, 1] - py)
+        (line,) = ax.plot(t, r, color=color, linewidth=1.0, alpha=0.8, label=f"Drone {i}")
+        drone_lines.append(line)
+
+    ax.axhline(R_ref, color="k", linestyle="--", linewidth=1.0, label=f"R = {R_ref} m")
+    ax.axhline(L0_ref, color="gray", linestyle=":", linewidth=1.0, label=f"L0 = {L0_ref} m")
+    (req_line,) = ax.plot(
+        [t[0], t[-1]], [_r_eq(kp0), _r_eq(kp0)],
+        color="red", linestyle="--", linewidth=1.0, label="r_eq"
+    )
+
+    ax.set_xlabel("t [s]")
+    ax.set_ylabel("r [m]")
+    ax.set_xlim(t[0], t[-1])
+    ax.set_ylim(0.0, R_ref * 1.6)
+    ax.legend(loc="upper right", fontsize=8)
+    ax.grid(True, alpha=0.3)
+    title = ax.set_title("")
+
+    def _refresh_title(kp, kd):
+        zeta = _zeta(kp, kd)
+        kd_crit = 2.0 * np.sqrt(kp)
+        regime = "underdamped" if zeta < 0.95 else ("critically damped" if zeta < 1.05 else "overdamped")
+        title.set_text(
+            f"ζ = {zeta:.2f}  ({regime})     r_eq = {_r_eq(kp):.3f} m     kd_crit = {kd_crit:.2f}"
+        )
+
+    _refresh_title(kp0, kd0)
+
+    ax_kp = plt.axes([0.15, 0.10, 0.65, 0.03])
+    ax_kd = plt.axes([0.15, 0.04, 0.65, 0.03])
+    slider_kp = Slider(ax_kp, "kp_alt", 0.1, 20.0, valinit=kp0, valstep=0.1)
+    slider_kd = Slider(ax_kd, "kd_alt", 0.0, 20.0, valinit=kd0, valstep=0.1)
+
+    def _on_change(_):
+        kp, kd = slider_kp.val, slider_kd.val
+        h = _run(kp, kd)
+        t_new = h["t"]
+        px_new, py_new = h["payload"][:, 0], h["payload"][:, 1]
+        for i, line in enumerate(drone_lines):
+            r = np.hypot(h["drones"][i][:, 0] - px_new, h["drones"][i][:, 1] - py_new)
+            line.set_data(t_new, r)
+        req = _r_eq(kp)
+        req_line.set_data([t_new[0], t_new[-1]], [req, req])
+        _refresh_title(kp, kd)
+        fig.canvas.draw_idle()
+
+    slider_kp.on_changed(_on_change)
+    slider_kd.on_changed(_on_change)
+
+    plt.show()
+    return slider_kp, slider_kd  # prevent garbage collection
+
+
+def plot_radius_vs_time(history, R: float = None, L0: float = None):
+    """
+    Plot orbit radius r(t) = distance from each drone to the payload over time.
+
+    Parameters
+    ----------
+    history : dict returned by simulate()
+    R       : target orbit radius (drawn as a dashed reference line if provided)
+    L0      : cable rest length (drawn as a dotted reference line if provided)
+    """
+    n_drones = len(history["drones"])
+    colors = cm.tab10(np.linspace(0, 0.9, n_drones))
+    t = history["t"]
+    px = history["payload"][:, 0]
+    py = history["payload"][:, 1]
+
+    _, ax = plt.subplots(figsize=(9, 4))
+
+    for i, (traj, color) in enumerate(zip(history["drones"], colors)):
+        r = np.hypot(traj[:, 0] - px, traj[:, 1] - py)
+        ax.plot(t, r, color=color, linewidth=1.0, label=f"Drone {i}")
+
+    if R is not None:
+        ax.axhline(R, color="k", linestyle="--", linewidth=1.0, label=f"R = {R} m")
+    if L0 is not None:
+        ax.axhline(L0, color="gray", linestyle=":", linewidth=1.0, label=f"L0 = {L0} m")
+
+    ax.set_xlabel("t [s]")
+    ax.set_ylabel("r [m]")
+    ax.set_title("Orbit radius vs time")
+    ax.legend(loc="upper right", fontsize=8)
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.show()
