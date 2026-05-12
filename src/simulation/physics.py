@@ -103,7 +103,7 @@ def compute_payload_aero_forces(payload: Payload) -> np.ndarray:
     """Placeholder for payload aerodynamic forces. Currently returns zero."""
     return np.zeros(3)
 
-def compute_forces(drones: list[Drone], cables: list[Cable], payload: Payload):
+def compute_forces(drones: list[Drone], cables: list[Cable], payload: Payload) -> dict[int, dict[str, np.ndarray]]:
     """
     Calculate all forces acting on drones and payload at the current state.
     Returns a dictionary of force components for each object.

@@ -23,7 +23,7 @@ from src.classes.payload import Payload
 ])
 def test_cable_tension(test_name, drone_position, drone_velocity, expected_force_payload, expected_force_drone):
     """Test cable tension with various configurations."""
-    dummyPayload = Payload(mass=1, initial_position=np.array([0, 0, 0]), initial_velocity=np.array([0, 0, 0]))
+    dummyPayload = Payload(id=0, mass=1, initial_position=np.array([0, 0, 0]), initial_velocity=np.array([0, 0, 0]))
     dummyDrone = Drone(id=1, mass=1, initial_position=np.array([0, 0, 1]), initial_velocity=np.array([0, 0, 0]))
     cable = Cable(id=0, length=1, stiffness=100, damping=10, payload=dummyPayload, drone=dummyDrone)
     
@@ -36,14 +36,14 @@ def test_cable_tension(test_name, drone_position, drone_velocity, expected_force
 
 def test_print_cable():
     """Test the string representation of the Cable class."""
-    dummyPayload = Payload(mass=1, initial_position=np.array([0, 0, 0]), initial_velocity=np.array([0, 0, 0]))
+    dummyPayload = Payload(id=0, mass=1, initial_position=np.array([0, 0, 0]), initial_velocity=np.array([0, 0, 0]))
     dummyDrone = Drone(id=1, mass=1, initial_position=np.array([0, 0, 1]), initial_velocity=np.array([0, 0, 0]))
     cable = Cable(id=0, length=1, stiffness=100, damping=10, payload=dummyPayload, drone=dummyDrone)
 
     cable_str = str(cable)
     assert "Cable object, id: 0" in cable_str
     assert "Assigned nodes" in cable_str
-    assert "Payload object, id: None" in cable_str
+    assert "Payload object, id: 0" in cable_str
     assert "Drone object, id: 1" in cable_str
 
 
@@ -59,7 +59,7 @@ def test_print_drone():
 
 def test_zero_norm_force_branches():
     """Test the zero-norm branches in the cable force helpers."""
-    dummyPayload = Payload(mass=1, initial_position=np.array([0, 0, 0]), initial_velocity=np.array([0, 0, 0]))
+    dummyPayload = Payload(id=0, mass=1, initial_position=np.array([0, 0, 0]), initial_velocity=np.array([0, 0, 0]))
     dummyDrone = Drone(id=1, mass=1, initial_position=np.array([0, 0, 0]), initial_velocity=np.array([0, 0, 0]))
     cable = Cable(id=0, length=0, stiffness=100, damping=10, payload=dummyPayload, drone=dummyDrone)
 

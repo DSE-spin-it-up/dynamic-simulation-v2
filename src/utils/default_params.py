@@ -15,8 +15,8 @@ DEFAULT_PARAMS: dict = {
 
     # Cable properties
     "L0": 3.5,          # rest length, m 
-    "k_cable": 25000.0,   # spring stiffness, N/m 
-    "d_cable":  200.0,   # damping, N·s/m
+    "k_cable": 500.0,   # spring stiffness, N/m 
+    "d_cable":  40.0,   # damping, N·s/m
 
     # SIU Controller - Orbit geometry
     "R":             3.0,   # nominal orbit radius, m
