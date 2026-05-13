@@ -1,6 +1,5 @@
 import numpy as np
 
-from ..utils.default_params import DEFAULT_PARAMS
 
 class Payload():
     def __init__(self, id: int, mass: float, initial_position: np.ndarray, initial_velocity: np.ndarray = np.array([0, 0, 0])):

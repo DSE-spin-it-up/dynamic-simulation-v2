@@ -1,12 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 import matplotlib.animation as animation
 from matplotlib.widgets import Slider
-from mpl_toolkits.mplot3d import Axes3D  
-from mpl_toolkits.mplot3d import art3d
 from typing import cast, Any
-import warnings
 
 
 def plot_trajectories(history):
@@ -272,7 +268,6 @@ def animate_trajectories_3d(
     from matplotlib import animation
     import matplotlib.pyplot as plt
     import numpy as np
-    from typing import Any, cast
 
     n_drones = len(history["drones"])
     colors = plt.get_cmap('tab10')(np.linspace(0, 0.9, n_drones))

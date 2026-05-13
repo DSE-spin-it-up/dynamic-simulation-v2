@@ -1,7 +1,6 @@
 import numpy as np
 
 from .drone_controller import DroneController
-from ..utils.default_params import DEFAULT_PARAMS
 
 class Drone():
     def __init__(self, id: int, mass: float, initial_position: np.ndarray, initial_velocity: np.ndarray = np.array([0, 0, 0])):
