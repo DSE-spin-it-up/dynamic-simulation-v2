@@ -3,12 +3,12 @@ import numpy as np
 from ..classes.drone import Drone
 from ..classes.payload import Payload
 from ..classes.cable import Cable
-from ..classes.path_planner import PathPlanner
+from ..classes.trajectory_planner import TrajectoryPlanner
 from .default_params import DEFAULT_PARAMS
 
-def initialise_objects(initial_states: dict[int, dict[str, np.ndarray]]) -> tuple[list[Drone], Payload, list[Cable], PathPlanner]:
+def initialise_objects(initial_states: dict[int, dict[str, np.ndarray]]) -> tuple[list[Drone], Payload, list[Cable], TrajectoryPlanner]:
     '''
-    Initialise Drone, Payload, Cable, and PathPlanner objects based on the provided initial states.
+    Initialise Drone, Payload, Cable, and TrajectoryPlanner objects based on the provided initial states.
     '''
 
     # Retrieve payload state using reserved ID -1
@@ -31,6 +31,6 @@ def initialise_objects(initial_states: dict[int, dict[str, np.ndarray]]) -> tupl
         cable = Cable(id=id, length=DEFAULT_PARAMS["L0"], stiffness=DEFAULT_PARAMS["k_cable"], damping=DEFAULT_PARAMS["d_cable"], payload=payload, drone=drone)
         cables.append(cable)
 
-    path_planner = PathPlanner()
+    path_planner = TrajectoryPlanner()
 
     return drones, payload, cables, path_planner

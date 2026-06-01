@@ -31,7 +31,7 @@ def main():
 
         # ---------------------------------- CONTROLLER UPDATES ----------------------------------------
 
-        # Poll PathPlanner (currently empty)
+        # Poll TrajectoryPlanner (currently empty)
         path_planner.update(t, drones, payload, cables)
 
         # Run low level DroneControllers (currently just returning a force)

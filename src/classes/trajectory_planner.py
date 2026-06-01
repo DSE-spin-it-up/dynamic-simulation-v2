@@ -1,4 +1,4 @@
-class PathPlanner():
+class TrajectoryPlanner():
     def __init__(self):
         pass
 
