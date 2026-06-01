@@ -2,7 +2,7 @@
 #  DEFAULT SIMULATION PARAMETERS
 # ===========================================================================
 DEFAULT_PARAMS: dict = {
-    "n_drones": 5,      # number of drones in the system
+    "n_drones": 3,      # number of drones in the system
 
     # Physical constants
     "g": 9.81,          # gravitational acceleration, m/s²
