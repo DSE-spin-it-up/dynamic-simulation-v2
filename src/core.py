@@ -21,7 +21,7 @@ def main():
     # Main simulation loop
     history = {"t": [], "drones": [[] for _ in drones], -1: []}
     t = DEFAULT_PARAMS["t_start"]
-    waypoint_holds = max(1, int(round(DEFAULT_PARAMS["opti_dt"] / DEFAULT_PARAMS["dt"])))
+    waypoints_hold = int(round(DEFAULT_PARAMS["opti_dt"] / DEFAULT_PARAMS["dt"])) * DEFAULT_PARAMS["opti_timepstep_N"]
 
     counter_waypoint = 0
     planned_positions = None
@@ -38,7 +38,7 @@ def main():
 
         mission_command = mission_planner.update(t, drones, payload, cables)
         # Run the planner only after the previous trajectory has been used
-        if planned_positions is None or counter_waypoint % waypoint_holds == 0:
+        if planned_positions is None or counter_waypoint % waypoints_hold == 0:
             planned_positions, _ = trajectory_planner.calculate_traj_step(
                 t,
                 drones=drones,
