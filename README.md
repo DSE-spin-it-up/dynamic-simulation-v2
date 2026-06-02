@@ -105,7 +105,7 @@ The simulation follows a structured workflow:
 ### 1. Initialization Phase
 - **default_params.py** — Sets global constants (simulation time, number of drones, physical parameters)
 - **initial_states.py** — Computes initial positions and velocities for all drones and payload
-- **initialise_objects.py** — Instantiates Drone, Payload, Cable, PathPlanner, and DroneController objects
+- **initialise_objects.py** — Instantiates Drone, Payload, Cable, TrajectoryPlanner, and DroneController objects
 
 ### 2. Main Simulation Loop
 For each timestep:

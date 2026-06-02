@@ -4,9 +4,10 @@ from ..classes.drone import Drone
 from ..classes.payload import Payload
 from ..classes.cable import Cable
 from ..classes.trajectory_planner import TrajectoryPlanner
+from ..classes.mission_manager import MissionManager
 from .default_params import DEFAULT_PARAMS
 
-def initialise_objects(initial_states: dict[int, dict[str, np.ndarray]]) -> tuple[list[Drone], Payload, list[Cable], TrajectoryPlanner]:
+def initialise_objects(initial_states: dict[int, dict[str, np.ndarray]]) -> tuple[list[Drone], Payload, list[Cable], TrajectoryPlanner, MissionManager]:
     '''
     Initialise Drone, Payload, Cable, and TrajectoryPlanner objects based on the provided initial states.
     '''
@@ -33,4 +34,6 @@ def initialise_objects(initial_states: dict[int, dict[str, np.ndarray]]) -> tupl
 
     path_planner = TrajectoryPlanner()
 
-    return drones, payload, cables, path_planner
+    mission_planner = MissionManager()
+
+    return drones, payload, cables, path_planner, mission_planner
