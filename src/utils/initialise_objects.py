@@ -32,8 +32,8 @@ def initialise_objects(initial_states: dict[int, dict[str, np.ndarray]]) -> tupl
         cable = Cable(id=id, length=DEFAULT_PARAMS["L0"], stiffness=DEFAULT_PARAMS["k_cable"], damping=DEFAULT_PARAMS["d_cable"], payload=payload, drone=drone)
         cables.append(cable)
 
-    path_planner = TrajectoryPlanner()
+    trajectory_planner = TrajectoryPlanner()
 
     mission_planner = MissionManager()
 
-    return drones, payload, cables, path_planner, mission_planner
+    return drones, payload, cables, trajectory_planner, mission_planner

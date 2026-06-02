@@ -37,4 +37,13 @@ DEFAULT_PARAMS: dict = {
     "t_end":   30.0,
     "dt":      0.01,    # output time-step (not the ODE step)
 
+    # Optimiser
+    "opti_timepstep_N": 100,   # number of time steps in the trajectory optimization horizon
+    "opti_dt": 0.1,    # time step between optimization points (s)
+    "Opti_max_iter": 1000,   # maximum iterations for the optimizer
+
+    # Physical limits
+    "max_thrust": 1,   # maximum thrust per drone, N
+    "min_distance": 1,    # minimum distance between drones, m
+
 }
