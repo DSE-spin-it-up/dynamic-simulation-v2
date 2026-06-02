@@ -22,14 +22,7 @@ def main():
     history = {"t": [], "drones": [[] for _ in drones], -1: []}
     t = DEFAULT_PARAMS["t_start"]
 
-    # Read in optimal trajectories
-    files = ["src/pos_sol_0.csv", "src/pos_sol_1.csv", "src/pos_sol_2.csv"]
-
-    drones_pos = []
-    for f in files:
-        drones_pos.append(np.loadtxt(f, delimiter=",", skiprows=40))
-    drones_pos = np.array(drones_pos)
-    
+    counter_waypoint = 0
     while t < 120-40:
         # ---------------------------------- DATA RECORDING ----------------------------------------
         # Record state at current time
@@ -41,11 +34,16 @@ def main():
         # ---------------------------------- MISSION PLANNING UPDATES ----------------------------------------
 
         mission_command = mission_planner.update(t, drones, payload, cables)
-        trajectory_planner.calculate_traj_step(t, drones=drones, payload=payload, mission_phase=mission_command.phase)
+        planned_positions, planned_forces = trajectory_planner.calculate_traj_step(
+            t,
+            drones=drones,
+            payload=payload,
+            mission_phase=mission_command.phase,
+        )
 
         # ---------------------------------- CONTROL UPDATES ----------------------------------------
 
-        # Run low level DroneControllers (currently just returning a force)
+        # Run low level control using the planned trajectory arrays as reference.
         controller_forces = {}
         
         i = 0
