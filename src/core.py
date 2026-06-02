@@ -31,8 +31,8 @@ def main():
 
         # ---------------------------------- MISSION PLANNING UPDATES ----------------------------------------
 
-        # mission_command = mission_planner.update(t, drones, payload, cables)
-        trajectory_planner.calculate_traj_step(t, drones=drones, payload=payload, mission_phase=0)
+        mission_command = mission_planner.update(t, drones, payload, cables)
+        trajectory_planner.calculate_traj_step(t, drones=drones, payload=payload, mission_phase=mission_command.phase)
 
         # ---------------------------------- CONTROL UPDATES ----------------------------------------
 

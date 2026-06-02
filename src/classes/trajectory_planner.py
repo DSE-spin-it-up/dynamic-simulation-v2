@@ -3,18 +3,20 @@ import numpy as np
 
 from ..utils.default_params import DEFAULT_PARAMS
 
-from .mission_manager import MissionPhase
 from .drone import Drone
 from .payload import Payload
 
 class TrajectoryPlanner:
     """Build a trajectory optimization problem and let phases add constraints to it."""
 
-    def __init__(self, mission_phase: int = MissionPhase.TAKE_OFF):
+    def __init__(self, mission_phase: int = 0):
         self.mission_phase = mission_phase
         self.payload_target = np.zeros(3)
         self.payload_target_t = 0.0
         self.next_traj_step_t = 0.0
+
+    def udpate_mission_phase(self, mission_phase: int):
+        self.mission_phase = mission_phase
 
     def set_payload_target(self, target, target_time):
         '''Update payload target for trajectory optimization.'''
