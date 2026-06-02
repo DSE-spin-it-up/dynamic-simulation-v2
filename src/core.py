@@ -21,7 +21,16 @@ def main():
     # Main simulation loop
     history = {"t": [], "drones": [[] for _ in drones], -1: []}
     t = DEFAULT_PARAMS["t_start"]
-    while t < DEFAULT_PARAMS["t_end"]:
+
+    # Read in optimal trajectories
+    files = ["src/pos_sol_0.csv", "src/pos_sol_1.csv", "src/pos_sol_2.csv"]
+
+    drones_pos = []
+    for f in files:
+        drones_pos.append(np.loadtxt(f, delimiter=",", skiprows=40))
+    drones_pos = np.array(drones_pos)
+    
+    while t < 120-40:
         # ---------------------------------- DATA RECORDING ----------------------------------------
         # Record state at current time
         history["t"].append(t)
@@ -38,9 +47,18 @@ def main():
 
         # Run low level DroneControllers (currently just returning a force)
         controller_forces = {}
-        for drone in drones:
-            thrust = drone.controller.compute_thrust(drone, payload)
-            controller_forces[drone.id] = thrust
+        
+        i = 0
+        while i < len(drones):
+            force = 10*(drones_pos[i][t] - history["drones"][i][-1][:3])
+            thrust = force
+            controller_forces[i] = thrust
+            # print(thrust)
+            i += 1
+        
+        # for drone in drones:
+        #     thrust = drone.controller.compute_thrust(drone, payload)
+        #     controller_forces[drone.id] = thrust
 
         # ---------------------------------- PHYSICS UPDATES ----------------------------------------
         # Forces
@@ -62,15 +80,16 @@ def main():
         # Real time plotting
 
         # Time update
-        t += DEFAULT_PARAMS["dt"]
+        t += 1
 
+    print(controller_forces)
     history["t"] = np.asarray(history["t"])
     history["drones"] = [np.asarray(traj) for traj in history["drones"]]
     history[-1] = np.asarray(history[-1])
 
-    plot_gain_response(DEFAULT_PARAMS)
-    plot_radius_vs_time(history, R=DEFAULT_PARAMS["R"], L0=DEFAULT_PARAMS["L0"])
-    animate_trajectories_3d(history, params=DEFAULT_PARAMS)
+    # plot_gain_response(DEFAULT_PARAMS)
+    # plot_radius_vs_time(history, R=DEFAULT_PARAMS["R"], L0=DEFAULT_PARAMS["L0"])
+    animate_trajectories_3d(history, params=DEFAULT_PARAMS, stride=2)
 
 
 if __name__ == "__main__":

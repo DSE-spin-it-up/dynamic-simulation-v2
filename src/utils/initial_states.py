@@ -22,7 +22,8 @@ def get_initial_states(
     angles = np.linspace(0, 2 * np.pi, num_drones, endpoint=False)
 
     # z_target is the absolute drone altitude; payload starts at payload_pos[2]
-    drone_z = payload_pos[2] + z_target  # for payload at z=0 this equals z_target
+    # drone_z = payload_pos[2] + z_target  # for payload at z=0 this equals z_target
+    drone_z = 0.5
 
     drone_positions = np.column_stack([
         R * np.cos(angles),  # x-coordinates drones
