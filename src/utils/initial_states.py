@@ -23,16 +23,36 @@ def get_initial_states(
 
     # z_target is the absolute drone altitude; payload starts at payload_pos[2]
     # drone_z = payload_pos[2] + z_target  # for payload at z=0 this equals z_target
-    drone_z = 0.5
+    drone_z = 100
 
-    drone_positions = np.column_stack([
-        R * np.cos(angles),  # x-coordinates drones
-        R * np.sin(angles),  # y-coordinates drones
-        np.full(num_drones, drone_z),  
+    # drone_positions = np.column_stack([
+    #     R * np.cos(angles),  # x-coordinates drones
+    #     R * np.sin(angles),  # y-coordinates drones
+    #     np.full(num_drones, drone_z),  
+    # ])
+
+    # drone_positions = np.column_stack([
+    #     np.full(num_drones, 50.0),  # x-coordinates drones
+    #     np.full(num_drones, 50.0),  # y-coordinates drones
+    #     np.full(num_drones, drone_z),  
+    # ])
+
+    drone_positions = np.array([
+        [55.0, 47.5, 47.5],
+        [0, 4.2, -4.2],
+        [drone_z, drone_z, drone_z],
+        # [55.0, 0, drone_z],
+        # [47.5, 4.2, drone_z],
+        # [47.5, -4.2, drone_z],
     ])
 
     # We assume velocities to be zero for this initial simulation
-    drone_velocities = np.zeros((num_drones, 3))
+    # drone_velocities = np.zeros((num_drones, 3))
+    drone_velocities = np.array([
+        [55.0, 47.5, 47.5],
+        [0, 4.2, -4.2],
+        [drone_z, drone_z, drone_z],
+    ])
     payload_velocity = np.zeros(3)
 
     states = {}

@@ -11,15 +11,15 @@ DEFAULT_PARAMS: dict = {
     "m_drone": 0.5,         # drone mass, kg  (each)
 
     # Payload properties
-    "m_payload": 2.0,         # payload mass, kg
+    "m_payload": 5.0,         # payload mass, kg
 
     # Cable properties
     "L0": 3.5,          # rest length, m 
-    "k_cable": 500.0,   # spring stiffness, N/m 
-    "d_cable":  40.0,   # damping, N·s/m
+    "k_cable": 80.0,   # spring stiffness, N/m 
+    "d_cable":  20.0,   # damping, N·s/m
 
     # SIU Controller - Orbit geometry
-    "R":             5.0,   # nominal orbit radius, m
+    "R":             50.0,   # nominal orbit radius, m
     "omega_target":  1.0,   # rad/s
     "k_omega":       3.0,   # angular velocity P gain for steady-state orbit tracking
 
@@ -30,7 +30,7 @@ DEFAULT_PARAMS: dict = {
     # Controller - Altitude (z)
     "z_target":  3.0,   # target drone height ABOVE payload, m
     "kp_z":     1.0,   # altitude PD proportional gain
-    "kd_z":      1.0,   # altitude PD derivative gain
+    "kd_z":      100.0,   # altitude PD derivative gain
 
     # Integration
     "t_start": 0,
