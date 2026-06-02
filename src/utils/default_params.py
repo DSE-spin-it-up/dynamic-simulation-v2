@@ -45,5 +45,10 @@ DEFAULT_PARAMS: dict = {
     # Physical limits
     "max_thrust": 1,   # maximum thrust per drone, N
     "min_distance": 1,    # minimum distance between drones, m
+    
+    # Mission parameters
+    "h_box":                    0.5,     # payload box height above ground, m
+    "target_payload_altitude":  30.0,    # payload altitude target at end of SPINNING_UP, m
+    "cruise_range":             1000.0,  # ground distance to cover during CRUISE, m
 
 }
