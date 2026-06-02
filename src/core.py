@@ -16,7 +16,7 @@ def main():
         num_drones=DEFAULT_PARAMS["n_drones"],
         payload_pos=np.array([0.0, 0.0, 0.0]),
     )
-    drones, payload, cables, path_planner = initialise_objects(initial_states)
+    drones, payload, cables, trajectory_planner, mission_planner = initialise_objects(initial_states)
 
     # Main simulation loop
     history = {"t": [], "drones": [[] for _ in drones], -1: []}
@@ -29,10 +29,12 @@ def main():
             history["drones"][i].append(np.hstack((drone.position, drone.v)))
         history[-1].append(np.hstack((payload.position, payload.v)))
 
-        # ---------------------------------- CONTROLLER UPDATES ----------------------------------------
+        # ---------------------------------- MISSION PLANNING UPDATES ----------------------------------------
 
         # Poll TrajectoryPlanner (currently empty)
-        path_planner.update(t, drones, payload, cables)
+        trajectory_planner.calculate_traj_step(t, drones, payload, mission_planner.phase)
+
+        # ---------------------------------- CONTROL UPDATES ----------------------------------------
 
         # Run low level DroneControllers (currently just returning a force)
         controller_forces = {}
