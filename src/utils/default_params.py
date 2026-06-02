@@ -19,7 +19,7 @@ DEFAULT_PARAMS: dict = {
     "d_cable":  40.0,   # damping, N·s/m
 
     # SIU Controller - Orbit geometry
-    "R":             5.0,   # nominal orbit radius, m
+    "R":             3.0,   # nominal orbit radius, m
     "omega_target":  1.0,   # rad/s
     "k_omega":       3.0,   # angular velocity P gain for steady-state orbit tracking
 
@@ -34,7 +34,7 @@ DEFAULT_PARAMS: dict = {
 
     # Integration
     "t_start": 0,
-    "t_end":   30.0,
+    "t_end":   10.0,
     "dt":      0.01,    # output time-step (not the ODE step)
 
     # Optimiser

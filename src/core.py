@@ -8,7 +8,7 @@ from src.utils.initialise_objects import initialise_objects
 from src.utils.default_params import DEFAULT_PARAMS
 from src.utils.initial_states import get_initial_states
 from src.simulation.physics import compute_net_forces, compute_forces, update_state
-from src.visualizations.plot import animate_trajectories_3d, plot_radius_vs_time, plot_gain_response
+from src.visualizations.plot import animate_trajectories_3d
 
 
 def main():
@@ -21,9 +21,12 @@ def main():
     # Main simulation loop
     history = {"t": [], "drones": [[] for _ in drones], -1: []}
     t = DEFAULT_PARAMS["t_start"]
+    waypoint_holds = max(1, int(round(DEFAULT_PARAMS["opti_dt"] / DEFAULT_PARAMS["dt"])))
 
     counter_waypoint = 0
-    while t < 120-40:
+    planned_positions = None
+
+    while t < DEFAULT_PARAMS["t_end"]:
         # ---------------------------------- DATA RECORDING ----------------------------------------
         # Record state at current time
         history["t"].append(t)
@@ -34,29 +37,25 @@ def main():
         # ---------------------------------- MISSION PLANNING UPDATES ----------------------------------------
 
         mission_command = mission_planner.update(t, drones, payload, cables)
-        planned_positions, planned_forces = trajectory_planner.calculate_traj_step(
-            t,
-            drones=drones,
-            payload=payload,
-            mission_phase=mission_command.phase,
-        )
+        # Run the planner only after the previous trajectory has been used
+        if planned_positions is None or counter_waypoint % waypoint_holds == 0:
+            planned_positions, _ = trajectory_planner.calculate_traj_step(
+                t,
+                drones=drones,
+                payload=payload,
+                mission_phase=mission_command.phase,
+            )
 
         # ---------------------------------- CONTROL UPDATES ----------------------------------------
 
-        # Run low level control using the planned trajectory arrays as reference.
+        # Use the first waypoint of the current horizon for the whole hold window.
         controller_forces = {}
-        
-        i = 0
-        while i < len(drones):
-            force = 10*(drones_pos[i][t] - history["drones"][i][-1][:3])
+
+        for drone in drones:
+            ref_pos = planned_positions[drone.id][:, 0]
+            force = 10 * (ref_pos - history["drones"][drone.id][-1][:3])
             thrust = force
-            controller_forces[i] = thrust
-            # print(thrust)
-            i += 1
-        
-        # for drone in drones:
-        #     thrust = drone.controller.compute_thrust(drone, payload)
-        #     controller_forces[drone.id] = thrust
+            controller_forces[drone.id] = thrust
 
         # ---------------------------------- PHYSICS UPDATES ----------------------------------------
         # Forces
@@ -78,7 +77,9 @@ def main():
         # Real time plotting
 
         # Time update
-        t += 1
+        t += DEFAULT_PARAMS["dt"]
+        counter_waypoint += 1
+
 
     print(controller_forces)
     history["t"] = np.asarray(history["t"])
