@@ -37,4 +37,9 @@ DEFAULT_PARAMS: dict = {
     "t_end":   30.0,
     "dt":      0.01,    # output time-step (not the ODE step)
 
+    # Mission parameters
+    "h_box":                    0.5,     # payload box height above ground, m
+    "target_payload_altitude":  30.0,    # payload altitude target at end of SPINNING_UP, m
+    "cruise_range":             1000.0,  # ground distance to cover during CRUISE, m
+
 }
