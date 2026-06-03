@@ -143,7 +143,14 @@ class TrajectoryPlanner:
 
         # ── Solve ─────────────────────────────────────────────────────────────────────
 
-        opti.solver('ipopt', {}, {'max_iter': DEFAULT_PARAMS.get("Opti_max_iter", 500), 'print_level': 0})
+        opti.solver('ipopt', {'expand': True}, {
+            'print_level':     3,
+            'max_iter':        2000,
+            'acceptable_tol':           1e-4,
+            'acceptable_iter':          10,
+            'acceptable_constr_viol_tol': 1e-4,
+            'mu_strategy':     'adaptive',
+        })
         sol = opti.solve()
 
         # ── Extract solution ──────────────────────────────────────────────────────────
@@ -192,13 +199,13 @@ class TrajectoryPlanner:
 
         return opti, (pos, vel, F)
 
-    def add_generic_constraints(self, opti: ca.Opti, x0=None, u0=None, Tc0=None, opt_variables=None) -> None:
+    def add_generic_constraints(self, opti: ca.Opti, opt_variables: OptiVariables, x0=None, u0=None, Tc0=None) -> None:
         '''Add generic constraints to the optimizer.'''
         # Initial condition: free on the first window (x0 None), pinned otherwise.
         if x0 is not None:
             uav_states0, payload_pos0, payload_vel0 = x0
             for i in range(self.sim.N_uav):
-                opti.subject_to(x[i][:, 0] == uav_states0[i])
+                opti.subject_to(opt_variables.x[i][:, 0] == uav_states0[i])
             opti.subject_to(opt_variables.payload_pos[:, 0] == payload_pos0)
             opti.subject_to(opt_variables.payload_vel[:, 0] == payload_vel0)
 
@@ -208,44 +215,44 @@ class TrajectoryPlanner:
         # keeps the committed control history continuous at the window seams.
         if u0 is not None:
             for i in range(self.sim.N_uav):
-                opti.subject_to(u[i][:, 0] == u0[i])
+                opti.subject_to(opt_variables.u[i][:, 0] == u0[i])
 
         if Tc0 is not None:
             for i in range(self.sim.N_uav):
-                opti.subject_to(Tc[i][:, 0] == Tc0[i])
+                opti.subject_to(opt_variables.Tc[i][:, 0] == Tc0[i])
 
         # Dynamics: backward (implicit) Euler. The increment over each step uses the
         # derivative evaluated at the *next* node: x_{k+1} = x_k + dt * f(x_{k+1}).
         for k in range(self.sim.N - 1):
             xs_dot, pos_dot, vel_dot = coupled_rhs(
-                [x[i][:, k + 1] for i in range(self.sim.N_uav)],
-                [u[i][:, k + 1] for i in range(self.sim.N_uav)],
-                [Tc[i][:, k + 1] for i in range(self.sim.N_uav)],
-                payload_pos[:, k + 1], payload_vel[:, k + 1], self.veh, self.sim)
+                [opt_variables.x[i][:, k + 1] for i in range(self.sim.N_uav)],
+                [opt_variables.u[i][:, k + 1] for i in range(self.sim.N_uav)],
+                [opt_variables.Tc[i][:, k + 1] for i in range(self.sim.N_uav)],
+                opt_variables.payload_pos[:, k + 1], opt_variables.payload_vel[:, k + 1], self.veh, self.sim)
             for i in range(self.sim.N_uav):
-                opti.subject_to(x[i][:, k + 1] == x[i][:, k] + self.sim.dt * xs_dot[i])
-            opti.subject_to(payload_pos[:, k + 1] == payload_pos[:, k] + self.sim.dt * pos_dot)
-            opti.subject_to(payload_vel[:, k + 1] == payload_vel[:, k] + self.sim.dt * vel_dot)
+                opti.subject_to(opt_variables.x[i][:, k + 1] == opt_variables.x[i][:, k] + self.sim.dt * xs_dot[i])
+            opti.subject_to(opt_variables.payload_pos[:, k + 1] == opt_variables.payload_pos[:, k] + self.sim.dt * pos_dot)
+            opti.subject_to(opt_variables.payload_vel[:, k + 1] == opt_variables.payload_vel[:, k] + self.sim.dt * vel_dot)
 
         # Control limits: thrust, propulsive power, angle of attack, bank angle.
         for i in range(self.sim.N_uav):
-            opti.subject_to(opti.bounded(self.lim.T_min,     u[i][0, :], self.lim.T_max))
-            opti.subject_to(u[i][0, :] * x[i][0, :] <= self.lim.P_max)
-            opti.subject_to(opti.bounded(self.lim.alpha_min, u[i][1, :], self.lim.alpha_max))
-            opti.subject_to(opti.bounded(-self.lim.mu_max,   u[i][2, :], self.lim.mu_max))
+            opti.subject_to(opti.bounded(self.lim.T_min,     opt_variables.u[i][0, :], self.lim.T_max))
+            opti.subject_to(opt_variables.u[i][0, :] * opt_variables.x[i][0, :] <= self.lim.P_max)
+            opti.subject_to(opti.bounded(self.lim.alpha_min, opt_variables.u[i][1, :], self.lim.alpha_max))
+            opti.subject_to(opti.bounded(-self.lim.mu_max,   opt_variables.u[i][2, :], self.lim.mu_max))
 
             # State limits: airspeed and flight-path angle.
             opti.subject_to(opti.bounded(self.lim.V_min,     x[i][0, :], self.lim.V_max))
             opti.subject_to(opti.bounded(-self.lim.gam_max,  x[i][1, :], self.lim.gam_max))
 
             # Cable tension: cables can only pull (Tc >= 0) and have a max rating.
-            opti.subject_to(opti.bounded(0.0, Tc[i], self.lim.Tc_max))
+            opti.subject_to(opti.bounded(0.0, opt_variables.Tc[i], self.lim.Tc_max))
 
             # Taut cables: keep each UAV cable_len from the payload, within a small fixed
             # tolerance band on the squared distance (hard equality is too stiff to solve).
             eps = 1e-1
             for k in range(self.sim.N):
-                d = x[i][3:6, k] - payload_pos[:, k]
+                d = opt_variables.x[i][3:6, k] - opt_variables.payload_pos[:, k]
                 opti.subject_to(opti.bounded(self.veh.cable_len**2 - eps,
                                              ca.dot(d, d),
                                              self.veh.cable_len**2 + eps))
@@ -253,13 +260,13 @@ class TrajectoryPlanner:
             # Collision avoidance: keep every pair of UAVs at least d_min apart.
             for j in range(i + 1, self.sim.N_uav):
                 for k in range(self.sim.N):
-                    d = x[i][3:6, k] - x[j][3:6, k]
+                    d = opt_variables.x[i][3:6, k] - opt_variables.x[j][3:6, k]
                     opti.subject_to(ca.dot(d, d) >= self.lim.d_min**2)
     
     def add_payload_tracking_objective(self, opti: ca.Opti, payload_pos: ca.MX) -> None:
         '''Add objective to track payload target at target time.'''
         # Cost: track the reference with the payload, plus a thrust-effort penalty.
-        cost = ca.sumsqr(payload_pos - ref)
+        cost = ca.sumsqr(payload_pos - self.ref)
         # for i in range(sim.N_uav):
         #     cost += R_T * ca.sumsqr(u[i][0, :])  # thrust effort
         opti.minimize(cost)
@@ -271,110 +278,3 @@ class TrajectoryPlanner:
     def constraint_placeholder(self, opti: ca.Opti) -> None:
         # Replace this with actual constraints for specific mission phases as needed
         return None
-        
-
-    def build_nlp(self, ref, x0=None, print_level=0, u0=None, Tc0=None):
-        """Build a simple trajectory-tracking NLP over sim.N timesteps.
-
-        If `x0` is None the initial state is left free: the optimizer chooses
-        whatever feasible starting state best tracks the payload reference `ref`
-        (3, N). If `x0 = (uav_states0, payload_pos0, payload_vel0)` is given, the
-        state at node 0 is pinned to it (used to stitch receding-horizon windows).
-
-        The system (UAVs + cable-suspended payload) is constrained by its dynamics,
-        the taut cables, and the state/control limits.
-
-        Cost: squared distance from the payload to the reference, plus a
-        weighted thrust-effort penalty.
-        Constraints: coupled dynamics, taut cables, and box limits on thrust, angle
-        of attack, and bank angle.
-        """
-        assert ref.shape == (3, self.sim.N), f"ref must be (3, {self.sim.N}), got {ref.shape}"
-        opti = ca.Opti()
-
-        # Decision variables: one set per UAV, plus the payload.
-        x           = [opti.variable(6, self.sim.N) for _ in range(self.sim.N_uav)]
-        u           = [opti.variable(3, self.sim.N) for _ in range(self.sim.N_uav)]
-        Tc          = [opti.variable(1, self.sim.N) for _ in range(self.sim.N_uav)]
-        payload_pos = opti.variable(3, self.sim.N)
-        payload_vel = opti.variable(3, self.sim.N)
-
-        # Cost: track the reference with the payload, plus a thrust-effort penalty.
-        R_T = 1e-3  # thrust effort weight
-        cost = ca.sumsqr(payload_pos - ref)
-        # for i in range(self.sim.N_uav):
-        #     cost += R_T * ca.sumsqr(u[i][0, :])  # thrust effort
-        opti.minimize(cost)
-
-        # Initial condition: free on the first window (x0 None), pinned otherwise.
-        if x0 is not None:
-            uav_states0, payload_pos0, payload_vel0 = x0
-            for i in range(self.sim.N_uav):
-                opti.subject_to(x[i][:, 0] == uav_states0[i])
-            opti.subject_to(payload_pos[:, 0] == payload_pos0)
-            opti.subject_to(payload_vel[:, 0] == payload_vel0)
-
-        # Control continuity across windows. Under backward Euler u[:,0] enters no
-        # dynamics constraint (the step into node k uses u[:,k]), so it is otherwise
-        # a free variable; pinning it to the previous window's continuation control
-        # keeps the committed control history continuous at the window seams.
-        if u0 is not None:
-            for i in range(self.sim.N_uav):
-                opti.subject_to(u[i][:, 0] == u0[i])
-
-        if Tc0 is not None:
-            for i in range(self.sim.N_uav):
-                opti.subject_to(Tc[i][:, 0] == Tc0[i])
-
-        # Dynamics: backward (implicit) Euler. The increment over each step uses the
-        # derivative evaluated at the *next* node: x_{k+1} = x_k + dt * f(x_{k+1}).
-        for k in range(self.sim.N - 1):
-            xs_dot, pos_dot, vel_dot = coupled_rhs(
-                [x[i][:, k + 1] for i in range(self.sim.N_uav)],
-                [u[i][:, k + 1] for i in range(self.sim.N_uav)],
-                [Tc[i][:, k + 1] for i in range(self.sim.N_uav)],
-                payload_pos[:, k + 1], payload_vel[:, k + 1], self.veh, self.sim)
-            for i in range(self.sim.N_uav):
-                opti.subject_to(x[i][:, k + 1] == x[i][:, k] + self.sim.dt * xs_dot[i])
-            opti.subject_to(payload_pos[:, k + 1] == payload_pos[:, k] + self.sim.dt * pos_dot)
-            opti.subject_to(payload_vel[:, k + 1] == payload_vel[:, k] + self.sim.dt * vel_dot)
-
-        # Control limits: thrust, propulsive power, angle of attack, bank angle.
-        for i in range(self.sim.N_uav):
-            opti.subject_to(opti.bounded(self.lim.T_min,     u[i][0, :], self.lim.T_max))
-            opti.subject_to(u[i][0, :] * x[i][0, :] <= self.lim.P_max)
-            opti.subject_to(opti.bounded(self.lim.alpha_min, u[i][1, :], self.lim.alpha_max))
-            opti.subject_to(opti.bounded(-self.lim.mu_max,   u[i][2, :], self.lim.mu_max))
-
-            # State limits: airspeed and flight-path angle.
-            opti.subject_to(opti.bounded(self.lim.V_min,     x[i][0, :], self.lim.V_max))
-            opti.subject_to(opti.bounded(-self.lim.gam_max,  x[i][1, :], self.lim.gam_max))
-
-            # Cable tension: cables can only pull (Tc >= 0) and have a max rating.
-            opti.subject_to(opti.bounded(0.0, Tc[i], self.lim.Tc_max))
-
-            # Taut cables: keep each UAV cable_len from the payload, within a small fixed
-            # tolerance band on the squared distance (hard equality is too stiff to solve).
-            eps = 1e-1
-            for k in range(self.sim.N):
-                d = x[i][3:6, k] - payload_pos[:, k]
-                opti.subject_to(opti.bounded(self.veh.cable_len**2 - eps,
-                                             ca.dot(d, d),
-                                             self.veh.cable_len**2 + eps))
-
-            # Collision avoidance: keep every pair of UAVs at least d_min apart.
-            for j in range(i + 1, self.sim.N_uav):
-                for k in range(self.sim.N):
-                    d = x[i][3:6, k] - x[j][3:6, k]
-                    opti.subject_to(ca.dot(d, d) >= self.lim.d_min**2)
-
-        opti.solver('ipopt', {'expand': True}, {
-            'print_level':     print_level,
-            'max_iter':        2000,
-            'acceptable_tol':           1e-4,
-            'acceptable_iter':          10,
-            'acceptable_constr_viol_tol': 1e-4,
-            'mu_strategy':     'adaptive',
-        })
-        return NLP(opti=opti, x=x, u=u, Tc=Tc,
-               payload_pos=payload_pos, payload_vel=payload_vel)
