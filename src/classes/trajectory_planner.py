@@ -105,7 +105,7 @@ class TrajectoryPlanner:
         self.mission_phase = mission_phase
 
         # ── Build generic optimizer ───────────────────────────────────────────────────
-        opti, (pos, vel, F) = self.build_generic_optimizer(drones)
+        opti, x, u = self.build_generic_optimizer(drones)
 
         assert self._X0 is not None
 
@@ -165,13 +165,13 @@ class TrajectoryPlanner:
 
         return pos_sol, F_sol
 
-    def build_generic_optimizer(self, drones) -> tuple[ca.Opti, tuple[list, list, list]]:
+    def build_generic_optimizer(self, drones) -> tuple[ca.Opti, list[ca.MX], list[ca.MX]]:
         '''Build a generic casadi optimizer with basic variables, objective, and constraints.'''
         if self._opti is not None:
             assert self._pos is not None
             assert self._vel is not None
             assert self._F is not None
-            return self._opti, (self._pos, self._vel, self._F)
+            return self._opti, self._x, self._u
 
         opti = ca.Opti()
 
@@ -189,15 +189,16 @@ class TrajectoryPlanner:
         self.add_generic_constraints(opti, x0=None, u0=None, Tc0=None, opt_variables=opti_variables)
         
         # ────────────── Build objective ───────────────────────────────────────────────────────────────
-        self.add_payload_tracking_objective(opti, x)
+        self.add_payload_tracking_objective(opti, opti_variables.x)
 
         self._opti = opti
-        self._pos = pos
-        self._vel = vel
-        self._F = F
-        self._X0 = X0
+        self._x = opti_variables.x
+        self._u = opti_variables.u
+        self._Tc = opti_variables.Tc
+        self._pos = opti_variables.payload_pos
+        self._vel = opti_variables.payload_vel
 
-        return opti, (pos, vel, F)
+        return opti, opti_variables.x, opti_variables.u
 
     def add_generic_constraints(self, opti: ca.Opti, opt_variables: OptiVariables, x0=None, u0=None, Tc0=None) -> None:
         '''Add generic constraints to the optimizer.'''
@@ -236,26 +237,26 @@ class TrajectoryPlanner:
 
         # Control limits: thrust, propulsive power, angle of attack, bank angle.
         for i in range(self.sim.N_uav):
-            opti.subject_to(opti.bounded(self.lim.T_min,     opt_variables.u[i][0, :], self.lim.T_max))
+            opti.subject_to(opti.bounded(self.lim.T_min, opt_variables.u[i][0, :], self.lim.T_max)) # type: ignore
             opti.subject_to(opt_variables.u[i][0, :] * opt_variables.x[i][0, :] <= self.lim.P_max)
-            opti.subject_to(opti.bounded(self.lim.alpha_min, opt_variables.u[i][1, :], self.lim.alpha_max))
-            opti.subject_to(opti.bounded(-self.lim.mu_max,   opt_variables.u[i][2, :], self.lim.mu_max))
+            opti.subject_to(opti.bounded(self.lim.alpha_min, opt_variables.u[i][1, :], self.lim.alpha_max)) # type: ignore
+            opti.subject_to(opti.bounded(-self.lim.mu_max,   opt_variables.u[i][2, :], self.lim.mu_max)) # type: ignore
 
             # State limits: airspeed and flight-path angle.
-            opti.subject_to(opti.bounded(self.lim.V_min,     x[i][0, :], self.lim.V_max))
-            opti.subject_to(opti.bounded(-self.lim.gam_max,  x[i][1, :], self.lim.gam_max))
+            opti.subject_to(opti.bounded(self.lim.V_min,     x[i][0, :], self.lim.V_max)) # type: ignore
+            opti.subject_to(opti.bounded(-self.lim.gam_max,  x[i][1, :], self.lim.gam_max)) # type: ignore
 
             # Cable tension: cables can only pull (Tc >= 0) and have a max rating.
-            opti.subject_to(opti.bounded(0.0, opt_variables.Tc[i], self.lim.Tc_max))
+            opti.subject_to(opti.bounded(0.0, opt_variables.Tc[i], self.lim.Tc_max)) # type: ignore
 
             # Taut cables: keep each UAV cable_len from the payload, within a small fixed
             # tolerance band on the squared distance (hard equality is too stiff to solve).
             eps = 1e-1
             for k in range(self.sim.N):
                 d = opt_variables.x[i][3:6, k] - opt_variables.payload_pos[:, k]
-                opti.subject_to(opti.bounded(self.veh.cable_len**2 - eps,
+                opti.subject_to(opti.bounded(self.veh.cable_len**2 - eps, # type: ignore
                                              ca.dot(d, d),
-                                             self.veh.cable_len**2 + eps))
+                                             self.veh.cable_len**2 + eps)) # type: ignore
 
             # Collision avoidance: keep every pair of UAVs at least d_min apart.
             for j in range(i + 1, self.sim.N_uav):
