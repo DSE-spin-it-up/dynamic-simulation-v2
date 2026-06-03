@@ -60,7 +60,7 @@ def plot_gain_response(params: dict):
         initial_states = get_initial_states(
             num_drones=p["n_drones"], R=p["R"], L0=p["L0"], payload_pos=np.zeros(3)
         )
-        drones, payload, cables, _ = initialise_objects(initial_states)
+        drones, payload, cables, _, _ = initialise_objects(initial_states)
         return simulate(drones, payload, cables, p)
 
     def _r_eq(kp):
@@ -245,6 +245,14 @@ def animate_trajectories(history, stride: int = 10, trail_length: int = 50):
     plt.show()
     return anim
 
+def get_active_plan_index(t, plan_time):
+    j = 0
+    for k in range(len(plan_time)):
+        if t >= plan_time[k]:
+            j = k
+        else:
+            break
+    return j
 
 def animate_trajectories_3d(
     history,
@@ -274,6 +282,8 @@ def animate_trajectories_3d(
 
     drones_xyz = [history["drones"][i][:, :3] for i in range(n_drones)]
     payload_xyz = history[-1][:, :3]
+
+    projected_trajectories = [history["projected_trajectories"][i] for i in range(n_drones)]
 
     has_phases = "phase" in history
 
@@ -344,11 +354,23 @@ def animate_trajectories_3d(
     # Animated artists
     # ------------------------------------------------------------------
 
+    predicted_trajectories_lines = []
     drone_trails = []
     drone_markers = []
     cable_lines = []
 
     for i, color in enumerate(colors):
+
+        predicted_traj_line = ax.plot(
+            [],
+            [],
+            [],
+            "--",
+            linewidth=1.0,
+            color=color,
+            alpha=0.5,
+            label=f"Drone {i} planned",
+        )[0]
 
         trail = ax.plot(
             [],
@@ -380,6 +402,7 @@ def animate_trajectories_3d(
             antialiased=False,
         )[0]
 
+        predicted_trajectories_lines.append(predicted_traj_line)
         drone_trails.append(trail)
         drone_markers.append(marker)
         cable_lines.append(cable)
@@ -441,7 +464,18 @@ def animate_trajectories_3d(
             )
 
             cast(Any, cable_lines[i]).set_3d_properties(
-                [pz, xyz[k, 2]]
+            [pz, xyz[k, 2]])
+
+            j = get_active_plan_index(history["t"][k], history["plan_time"])
+
+            pred_traj = projected_trajectories[i][j]
+
+            predicted_trajectories_lines[i].set_data(
+            pred_traj[0, :],
+            pred_traj[1, :]
+            )
+            cast(Any, predicted_trajectories_lines[i]).set_3d_properties(
+            pred_traj[2, :]
             )
 
         # Payload

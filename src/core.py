@@ -19,7 +19,8 @@ def main():
     drones, payload, cables, trajectory_planner, mission_planner = initialise_objects(initial_states)
 
     # Main simulation loop
-    history = {"t": [], "drones": [[] for _ in drones], -1: []}
+    history = {"t": [], "drones": [[] for _ in drones], -1: [], "projected_trajectories": [[]for _ in drones]}
+    history["plan_time"] = []
     t = DEFAULT_PARAMS["t_start"]
     waypoints_hold = int(round(DEFAULT_PARAMS["opti_dt"] / DEFAULT_PARAMS["dt"])) * DEFAULT_PARAMS["opti_timepstep_N"]
 
@@ -45,6 +46,9 @@ def main():
                 payload=payload,
                 mission_phase=mission_command.phase,
             )
+            for drone_n in range(DEFAULT_PARAMS["n_drones"]):
+                history["projected_trajectories"][drone_n].append(planned_positions[drone_n])
+            history["plan_time"].append(t)
 
         # ---------------------------------- CONTROL UPDATES ----------------------------------------
 
@@ -81,7 +85,6 @@ def main():
         counter_waypoint += 1
 
 
-    print(controller_forces)
     history["t"] = np.asarray(history["t"])
     history["drones"] = [np.asarray(traj) for traj in history["drones"]]
     history[-1] = np.asarray(history[-1])
