@@ -34,7 +34,7 @@ DEFAULT_PARAMS: dict = {
 
     # Integration
     "t_start": 0,
-    "t_end":   10.0,
+    "t_end":   40.0,
     "dt":      0.01,    # output time-step (not the ODE step)
 
     # Optimiser

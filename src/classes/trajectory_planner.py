@@ -35,6 +35,7 @@ class TrajectoryPlanner:
         self.payload_target_t = float(target_time)
 
     def calculate_traj_step(self, t, drones: list[Drone], payload: Payload, mission_phase: int) -> tuple[list[np.ndarray], list[np.ndarray]]:
+        print(f"Calculating trajectory step at time {t:.2f}")
         # ── Update mission phase ──────────────────────────────────────────────────────
         self.mission_phase = mission_phase
 
@@ -115,7 +116,7 @@ class TrajectoryPlanner:
         self.add_generic_constraints(opti, pos, vel, F, X0)
         
         # ────────────── Build objective ───────────────────────────────────────────────────────────────
-        self.add_payload_tracking_objective(opti, pos)
+        self.add_payload_tracking_objective(opti, pos, F)
 
         self._opti = opti
         self._pos = pos
@@ -162,12 +163,14 @@ class TrajectoryPlanner:
                     opti.subject_to(ca.dot(diff, diff) >= min_distance**2)
         return None
     
-    def add_payload_tracking_objective(self, opti: ca.Opti, pos) -> None:
+    def add_payload_tracking_objective(self, opti: ca.Opti, pos, F) -> None:
         '''Add objective to track payload target at target time.'''
         # Find the index of the optimization timestep closest to the payload target time
         opti_dt = self.params["opti_dt"]
         opti_N = self.horizon_steps
         N = self.n_drones
+        effort_weight = 1e-4
+        smoothness_weight = 1e-2
 
         target_k = int(self.payload_target_t / opti_dt)
         if target_k >= opti_N:
@@ -178,7 +181,13 @@ class TrajectoryPlanner:
 
         # Objective: minimize distance from average position to payload target
         error = avg_pos_at_target - ca.DM(self.payload_target)
-        opti.minimize(ca.dot(error, error))
+        cost = ca.dot(error, error)
+
+        for i in range(N):
+            cost += effort_weight * ca.sumsqr(F[i])
+            cost += smoothness_weight * ca.sumsqr(pos[i][:, 1:] - pos[i][:, :-1])
+
+        opti.minimize(cost)
 
     def custom_constraint_placeholder(self, opti: ca.Opti) -> None:
         # Replace this with actual constraints for specific mission phases as needed
