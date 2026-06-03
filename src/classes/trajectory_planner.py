@@ -5,6 +5,7 @@ from ..utils.default_params import DEFAULT_PARAMS, VehicleParams, StateLimits, S
 
 from .drone import Drone
 from .payload import Payload
+from src.classes import cable, payload
 
 # --------------- helper physics functions for the aircraft dyamics -------------------------------
 def drone_rhs(x, u, F_ext, veh: VehicleParams):
@@ -76,20 +77,23 @@ class TrajectoryPlanner:
         self.payload_target_t = 0.0
         self.next_traj_step_t = 0.0
         self._opti = None
-        self._pos = None
-        self._vel = None
-        self._F = None
-        self._X0 = None
-        self._last_pos_sol = None
-        self._last_vel_sol = None
-        self._last_F_sol = None
+        self._x = None
+        self._u = None
+        self._Tc = None
+        self._payload_pos = None
+        self._payload_vel = None
+        self._last_x_sol = None
+        self._last_u_sol = None
+        self._last_Tc_sol = None
+        self.last_payload_pos_sol = None
+        self.last_payload_vel_sol = None
         self.sim = SimParams()
         self.veh = VehicleParams()
         self.lim = StateLimits()
         self.ref = np.vstack([
             np.zeros_like(np.arange(DEFAULT_PARAMS["opti_timepstep_N"]) * DEFAULT_PARAMS["dt"]), 
             np.zeros_like(np.arange(DEFAULT_PARAMS["opti_timepstep_N"]) * DEFAULT_PARAMS["dt"]), 
-            100.0 + 3.33 * DEFAULT_PARAMS["opti_timepstep_N"] * DEFAULT_PARAMS["dt"]
+            100.0 + 3.33 * np.arange(DEFAULT_PARAMS["opti_timepstep_N"]) * DEFAULT_PARAMS["dt"]
             ])
 
     def udpate_mission_phase(self, mission_phase: int):
@@ -105,38 +109,74 @@ class TrajectoryPlanner:
         self.mission_phase = mission_phase
 
         # ── Build generic optimizer ───────────────────────────────────────────────────
-        opti, x, u = self.build_generic_optimizer(drones)
-
-        assert self._X0 is not None
-
-        # Carry the current state as parameters for the first node.
-        for i, drone in enumerate(drones):
-            opti.set_value(self._X0[i], np.hstack((drone.position, drone.v)))
+        opti, x, u = self.build_generic_optimizer(drones, payload)
 
         # Warm-start the solver with the previous optimal trajectory when available.
-        if self._last_pos_sol is not None and self._last_vel_sol is not None and self._last_F_sol is not None:
-            shift = 1 if self._last_pos_sol[0].shape[1] > 1 else 0
-            for i in range(min(len(drones), len(self._last_pos_sol))):
+        if self._last_x_sol is not None and self._last_u_sol is not None and self._last_Tc_sol is not None and self.last_payload_pos_sol is not None and self.last_payload_vel_sol is not None:
+            shift = 1 if self._last_x_sol[0].shape[1] > 1 else 0 # type: ignore
+            for i in range(min(len(drones), len(self._last_x_sol))): # type: ignore
                 pos_guess = np.hstack([
-                    self._last_pos_sol[i][:, shift:],
-                    np.tile(self._last_pos_sol[i][:, -1:], (1, shift if shift > 0 else 1)),
+                    self._last_x_sol[i][:, shift:], # type: ignore
+                    np.tile(self._last_x_sol[i][:, -1:], (1, shift if shift > 0 else 1)), # type: ignore
                 ])
-                vel_guess = np.hstack([
-                    self._last_vel_sol[i][:, shift:],
-                    np.tile(self._last_vel_sol[i][:, -1:], (1, shift if shift > 0 else 1)),
+                u_guess = np.hstack([
+                    self._last_u_sol[i][:, shift:], # type: ignore
+                    np.tile(self._last_u_sol[i][:, -1:], (1, shift if shift > 0 else 1)), # type: ignore
                 ])
-                force_guess = np.hstack([
-                    self._last_F_sol[i][:, shift:],
-                    np.tile(self._last_F_sol[i][:, -1:], (1, shift if shift > 0 else 1)),
+                Tc_guess = np.hstack([
+                    self._last_Tc_sol[i][:, shift:], # type: ignore
+                    np.tile(self._last_Tc_sol[i][:, -1:], (1, shift if shift > 0 else 1)), # type: ignore
                 ])
-                opti.set_initial(pos[i], pos_guess[:, :self.horizon_steps])
-                opti.set_initial(vel[i], vel_guess[:, :self.horizon_steps])
-                opti.set_initial(F[i], force_guess[:, :self.horizon_steps])
+                payload_pos_guess = np.hstack([
+                    self.last_payload_pos_sol[:, shift:], # type: ignore
+                    np.tile(self.last_payload_pos_sol[:, -1:], (1, shift if shift > 0 else 1)), # type: ignore
+                ])
+                payload_vel_guess = np.hstack([
+                    self.last_payload_vel_sol[:, shift:], # type: ignore
+                    np.tile(self.last_payload_vel_sol[:, -1:], (1, shift if shift > 0 else 1)), # type: ignore
+                ])
+                opti.set_initial(self._x[i], pos_guess[:, :self.horizon_steps]) # type: ignore
+                opti.set_initial(self._u[i], u_guess[:, :self.horizon_steps]) # type: ignore
+                opti.set_initial(self._Tc[i], Tc_guess[:, :self.horizon_steps]) # type: ignore
+                opti.set_initial(self._payload_pos, payload_pos_guess[:, :self.horizon_steps]) # type: ignore
+                opti.set_initial(self._payload_vel, payload_vel_guess[:, :self.horizon_steps]) # type: ignore
+
         else:
             for i, drone in enumerate(drones):
-                opti.set_initial(pos[i], np.tile(drone.position.reshape(3, 1), (1, self.horizon_steps)))
-                opti.set_initial(vel[i], np.tile(drone.v.reshape(3, 1), (1, self.horizon_steps)))
-                opti.set_initial(F[i], np.zeros((3, self.horizon_steps)))
+
+                x_guess = np.hstack(
+                    (drone.position,
+                     drone.v)
+                )
+
+                opti.set_initial(
+                    self._x[i], # type: ignore
+                    np.tile(
+                        x_guess[:, None],
+                        (1, self.sim.N)
+                    )
+                )
+
+                opti.set_initial(
+                    self._u[i], # type: ignore
+                    np.zeros((3, self.sim.N))
+                )
+
+                opti.set_initial(
+                    self._Tc[i], # type: ignore
+                    np.ones((1, self.sim.N))
+                )
+
+            opti.set_initial(
+                self._payload_pos, # type: ignore
+                np.tile(payload.position[:, None], (1, self.sim.N))
+            )
+
+            opti.set_initial(
+                self._payload_vel, # type: ignore
+                np.tile(payload.v[:, None], (1, self.sim.N))
+            )
+
 
         # ── Set specific contraints per phase ─────────────────────────────────────────
 
@@ -145,7 +185,7 @@ class TrajectoryPlanner:
 
         opti.solver('ipopt', {'expand': True}, {
             'print_level':     3,
-            'max_iter':        2000,
+            'max_iter':        500,
             'acceptable_tol':           1e-4,
             'acceptable_iter':          10,
             'acceptable_constr_viol_tol': 1e-4,
@@ -156,23 +196,19 @@ class TrajectoryPlanner:
         # ── Extract solution ──────────────────────────────────────────────────────────
 
         N = DEFAULT_PARAMS.get("n_drones", len(drones))
-        pos_sol = [sol.value(pos[i]) for i in range(N)]   # list of (3, N)
-        F_sol   = [sol.value(F[i])   for i in range(N)]
+        x_sol = [sol.value(self._x[i]) for i in range(N)]   # type: ignore
+        u_sol = [sol.value(self._u[i]) for i in range(N)]   # type: ignore
 
-        self._last_pos_sol = pos_sol
-        self._last_vel_sol = [sol.value(vel[i]) for i in range(N)]
-        self._last_F_sol = F_sol
+        self._last_x_sol = x_sol
+        self._last_u_sol = [sol.value(self._u[i]) for i in range(N)] # type: ignore
+        self._last_Tc_sol = [sol.value(self._Tc[i]) for i in range(N)] # type: ignore
+        self._last_payload_pos_sol = sol.value(self._payload_pos)
+        self._last_payload_vel_sol = sol.value(self._payload_vel)
 
-        return pos_sol, F_sol
-
-    def build_generic_optimizer(self, drones) -> tuple[ca.Opti, list[ca.MX], list[ca.MX]]:
+        return x_sol, u_sol
+    
+    def build_generic_optimizer(self, drones, payload) -> tuple[ca.Opti, list[ca.MX], list[ca.MX]]:
         '''Build a generic casadi optimizer with basic variables, objective, and constraints.'''
-        if self._opti is not None:
-            assert self._pos is not None
-            assert self._vel is not None
-            assert self._F is not None
-            return self._opti, self._x, self._u
-
         opti = ca.Opti()
 
         # ────────────────── Create optimization variables ─────────────────────────────────────────
@@ -186,90 +222,159 @@ class TrajectoryPlanner:
 
 
         # ────────────────── Build generic objective and constraints ───────────────────────────────────────
-        self.add_generic_constraints(opti, x0=None, u0=None, Tc0=None, opt_variables=opti_variables)
+        self.add_generic_constraints(opti, opt_variables=opti_variables, drones=drones, payload=payload)
         
         # ────────────── Build objective ───────────────────────────────────────────────────────────────
-        self.add_payload_tracking_objective(opti, opti_variables.x)
+        self.add_payload_tracking_objective(opti, opti_variables.payload_pos)
 
         self._opti = opti
         self._x = opti_variables.x
         self._u = opti_variables.u
         self._Tc = opti_variables.Tc
-        self._pos = opti_variables.payload_pos
-        self._vel = opti_variables.payload_vel
+        self._payload_pos = opti_variables.payload_pos
+        self._payload_vel = opti_variables.payload_vel
 
         return opti, opti_variables.x, opti_variables.u
 
-    def add_generic_constraints(self, opti: ca.Opti, opt_variables: OptiVariables, x0=None, u0=None, Tc0=None) -> None:
-        '''Add generic constraints to the optimizer.'''
-        # Initial condition: free on the first window (x0 None), pinned otherwise.
-        if x0 is not None:
-            uav_states0, payload_pos0, payload_vel0 = x0
-            for i in range(self.sim.N_uav):
-                opti.subject_to(opt_variables.x[i][:, 0] == uav_states0[i])
-            opti.subject_to(opt_variables.payload_pos[:, 0] == payload_pos0)
-            opti.subject_to(opt_variables.payload_vel[:, 0] == payload_vel0)
+    def add_generic_constraints(
+        self,
+        opti: ca.Opti,
+        opt_variables: OptiVariables,
+        drones: list[Drone],
+        payload: Payload
+    ) -> None:
 
-        # Control continuity across windows. Under backward Euler u[:,0] enters no
-        # dynamics constraint (the step into node k uses u[:,k]), so it is otherwise
-        # a free variable; pinning it to the previous window's continuation control
-        # keeps the committed control history continuous at the window seams.
-        if u0 is not None:
-            for i in range(self.sim.N_uav):
-                opti.subject_to(opt_variables.u[i][:, 0] == u0[i])
+        N = self.sim.N
+        dt = self.sim.dt
 
-        if Tc0 is not None:
-            for i in range(self.sim.N_uav):
-                opti.subject_to(opt_variables.Tc[i][:, 0] == Tc0[i])
+        # ============================================================
+        # 1. INITIAL CONDITIONS (WELL-POSED, NOT OVERCONSTRAINED)
+        # ============================================================
 
-        # Dynamics: backward (implicit) Euler. The increment over each step uses the
-        # derivative evaluated at the *next* node: x_{k+1} = x_k + dt * f(x_{k+1}).
-        for k in range(self.sim.N - 1):
-            xs_dot, pos_dot, vel_dot = coupled_rhs(
+        for i in range(self.sim.N_uav):
+            opti.subject_to(
+                opt_variables.x[i][:, 0] ==
+                ca.vertcat(drones[i].position, drones[i].v)
+            )
+
+        # Payload: do NOT fix exactly (prevents infeasibility)
+        opti.subject_to(
+            ca.sumsqr(opt_variables.payload_pos[:, 0] - payload.position) <= 1e-6
+        )
+        opti.subject_to(
+            ca.sumsqr(opt_variables.payload_vel[:, 0] - payload.v) <= 1e-6
+        )
+
+        # ============================================================
+        # 2. DYNAMICS (START AT k = 1, NOT k = 0)
+        # ============================================================
+
+        for k in range(1, N - 1):
+
+            xs_dot, p_dot, v_dot = coupled_rhs(
                 [opt_variables.x[i][:, k + 1] for i in range(self.sim.N_uav)],
                 [opt_variables.u[i][:, k + 1] for i in range(self.sim.N_uav)],
                 [opt_variables.Tc[i][:, k + 1] for i in range(self.sim.N_uav)],
-                opt_variables.payload_pos[:, k + 1], opt_variables.payload_vel[:, k + 1], self.veh, self.sim)
+                opt_variables.payload_pos[:, k + 1],
+                opt_variables.payload_vel[:, k + 1],
+                self.veh,
+                self.sim
+            )
+
             for i in range(self.sim.N_uav):
-                opti.subject_to(opt_variables.x[i][:, k + 1] == opt_variables.x[i][:, k] + self.sim.dt * xs_dot[i])
-            opti.subject_to(opt_variables.payload_pos[:, k + 1] == opt_variables.payload_pos[:, k] + self.sim.dt * pos_dot)
-            opti.subject_to(opt_variables.payload_vel[:, k + 1] == opt_variables.payload_vel[:, k] + self.sim.dt * vel_dot)
+                opti.subject_to(
+                    opt_variables.x[i][:, k + 1]
+                    == opt_variables.x[i][:, k] + dt * xs_dot[i]
+                )
 
-        # Control limits: thrust, propulsive power, angle of attack, bank angle.
+            opti.subject_to(
+                opt_variables.payload_pos[:, k + 1]
+                == opt_variables.payload_pos[:, k] + dt * p_dot
+            )
+
+            opti.subject_to(
+                opt_variables.payload_vel[:, k + 1]
+                == opt_variables.payload_vel[:, k] + dt * v_dot
+            )
+
+        # ============================================================
+        # 3. INPUT AND STATE LIMITS (UNCHANGED)
+        # ============================================================
+
         for i in range(self.sim.N_uav):
-            opti.subject_to(opti.bounded(self.lim.T_min, opt_variables.u[i][0, :], self.lim.T_max)) # type: ignore
-            opti.subject_to(opt_variables.u[i][0, :] * opt_variables.x[i][0, :] <= self.lim.P_max)
-            opti.subject_to(opti.bounded(self.lim.alpha_min, opt_variables.u[i][1, :], self.lim.alpha_max)) # type: ignore
-            opti.subject_to(opti.bounded(-self.lim.mu_max,   opt_variables.u[i][2, :], self.lim.mu_max)) # type: ignore
 
-            # State limits: airspeed and flight-path angle.
-            opti.subject_to(opti.bounded(self.lim.V_min,     x[i][0, :], self.lim.V_max)) # type: ignore
-            opti.subject_to(opti.bounded(-self.lim.gam_max,  x[i][1, :], self.lim.gam_max)) # type: ignore
+            opti.subject_to(
+                opti.bounded(self.lim.T_min, opt_variables.u[i][0, :], self.lim.T_max) # type: ignore
+            )
 
-            # Cable tension: cables can only pull (Tc >= 0) and have a max rating.
-            opti.subject_to(opti.bounded(0.0, opt_variables.Tc[i], self.lim.Tc_max)) # type: ignore
+            opti.subject_to(
+                opt_variables.u[i][0, :] * opt_variables.x[i][0, :] <= self.lim.P_max
+            )
 
-            # Taut cables: keep each UAV cable_len from the payload, within a small fixed
-            # tolerance band on the squared distance (hard equality is too stiff to solve).
-            eps = 1e-1
-            for k in range(self.sim.N):
+            opti.subject_to(
+                opti.bounded(self.lim.alpha_min, opt_variables.u[i][1, :], self.lim.alpha_max) # type: ignore
+            )
+
+            opti.subject_to(
+                opti.bounded(-self.lim.mu_max, opt_variables.u[i][2, :], self.lim.mu_max) # type: ignore
+            )
+
+            opti.subject_to(
+                opti.bounded(self.lim.V_min, opt_variables.x[i][0, :], self.lim.V_max) # type: ignore
+            )
+
+            opti.subject_to(
+                opti.bounded(-self.lim.gam_max, opt_variables.x[i][1, :], self.lim.gam_max) # type: ignore
+            )
+
+            opti.subject_to(
+                opti.bounded(0.0, opt_variables.Tc[i], self.lim.Tc_max) # type: ignore
+            )
+
+        # ============================================================
+        # 4. SOFT CABLE CONSTRAINT (REPLACES HARD INFEASIBLE CONSTRAINT)
+        # ============================================================
+
+        eps_cable = 0.3
+        w_cable = 100.0
+
+        cable_cost = 0
+
+        for i in range(self.sim.N_uav):
+            for k in range(1, N):   # IMPORTANT: skip k=0
+
                 d = opt_variables.x[i][3:6, k] - opt_variables.payload_pos[:, k]
-                opti.subject_to(opti.bounded(self.veh.cable_len**2 - eps, # type: ignore
-                                             ca.dot(d, d),
-                                             self.veh.cable_len**2 + eps)) # type: ignore
 
-            # Collision avoidance: keep every pair of UAVs at least d_min apart.
+                dist2 = ca.dot(d, d)
+                err = dist2 - self.veh.cable_len**2
+
+                cable_cost += w_cable * err**2 + eps_cable * ca.fabs(err)
+
+        # add to objective later via shared cost
+        self._cable_cost = cable_cost
+
+        # ============================================================
+        # 5. COLLISION AVOIDANCE (KEEP HARD BUT STABLE)
+        # ============================================================
+
+        for i in range(self.sim.N_uav):
             for j in range(i + 1, self.sim.N_uav):
-                for k in range(self.sim.N):
+                for k in range(1, N):
+
                     d = opt_variables.x[i][3:6, k] - opt_variables.x[j][3:6, k]
-                    opti.subject_to(ca.dot(d, d) >= self.lim.d_min**2)
+
+                    opti.subject_to(
+                        ca.dot(d, d) >= self.lim.d_min**2
+                    )
     
     def add_payload_tracking_objective(self, opti: ca.Opti, payload_pos: ca.MX) -> None:
-        '''Add objective to track payload target at target time.'''
-        # Cost: track the reference with the payload, plus a thrust-effort penalty.
-        cost = ca.sumsqr(payload_pos - self.ref)
-        # for i in range(sim.N_uav):
-        #     cost += R_T * ca.sumsqr(u[i][0, :])  # thrust effort
+
+        tracking = ca.sumsqr(payload_pos - self.ref)
+
+        cable = getattr(self, "_cable_cost", 0)
+
+        cost = tracking + cable
+
         opti.minimize(cost)
 
     def custom_constraint_placeholder(self, opti: ca.Opti) -> None:
