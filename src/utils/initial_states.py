@@ -11,50 +11,42 @@ def get_initial_states(
     z_target: float = DEFAULT_PARAMS["z_target"],
 ) -> dict:
     """
-    Returns initial positions and velocities for all drones and the payload.
+    Drones are placed on a cone above the payload such that:
+      - horizontal radius = R
+      - cable length = L0 exactly
+      - drone height above payload = sqrt(L0^2 - R^2)
 
-    Drones are evenly spaced on a horizontal circle of radius R in the x-y plane,
-    at height z_target above the payload.
-
-    Output:
-        A dictionary containing initial states for each drone and the payload (velocity and position).
+    Raises if R >= L0 (geometry impossible).
     """
+    if R >= L0:
+        raise ValueError(f"Cable length L0={L0} must be greater than formation radius R={R}. "
+                         f"Currently R={R} >= L0={L0}, so no valid vertical offset exists.")
+
     angles = np.linspace(0, 2 * np.pi, num_drones, endpoint=False)
 
-    # z_target is the absolute drone altitude; payload starts at payload_pos[2]
-    # drone_z = payload_pos[2] + z_target  # for payload at z=0 this equals z_target
-    drone_z = 0.5
+    # Height offset above payload such that |drone - payload| == L0 exactly
+    dz = np.sqrt(L0**2 - R**2)
+    drone_z = payload_pos[2] + dz  # absolute altitude
 
     drone_positions = np.column_stack([
-        R * np.cos(angles),  # x-coordinates drones
-        R * np.sin(angles),  # y-coordinates drones
-        np.full(num_drones, drone_z),  
+        payload_pos[0] + R * np.cos(angles),  # offset from payload, not world origin
+        payload_pos[1] + R * np.sin(angles),
+        np.full(num_drones, drone_z),
     ])
 
-    # We assume velocities to be zero for this initial simulation
-    drone_velocities = np.zeros((num_drones, 3))
+    drone_velocities = np.tile([0.0, 0.0, 0.0], (num_drones, 1))  # all flying north
     payload_velocity = np.zeros(3)
 
     states = {}
-
-    # Add drones with numeric IDs (0, 1, 2, ...)
     for i in range(num_drones):
         states[i] = {
             "position": drone_positions[i],
             "velocity": drone_velocities[i],
         }
 
-    # Add payload with reserved ID -1
-    # CONVENTION: Payload always uses id=-1. This is reserved and should not be used for any drone.
     states[-1] = {
         "position": payload_pos.copy(),
         "velocity": payload_velocity,
     }
 
     return states
-
-# if __name__ == "__main__":
-
-#     states = get_initial_states()
-
-#     print(states)
