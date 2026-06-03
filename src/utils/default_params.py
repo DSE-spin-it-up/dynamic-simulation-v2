@@ -116,9 +116,8 @@ class StateLimits:
     Tc_max:    float = 500.0  # max cable tension [N]
 
 @dataclass
-class NLP:
-    """Handles for a built trajectory NLP."""
-    opti:        ca.Opti
+class OptiVariables:
+    """Optimization variables for the trajectory planner."""
     x:           list   # per-UAV state   (6, N)
     u:           list   # per-UAV control (3, N)
     Tc:          list   # per-UAV cable tension (1, N)
