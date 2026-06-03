@@ -466,17 +466,12 @@ def animate_trajectories_3d(
             cast(Any, cable_lines[i]).set_3d_properties(
             [pz, xyz[k, 2]])
 
-            j = get_active_plan_index(history["t"][k], history["plan_time"])
+            pred_trajs = projected_trajectories[i]  # list of all chunks
+            all_x = np.concatenate([t[0, :] for t in pred_trajs])
+            all_y = np.concatenate([t[1, :] for t in pred_trajs])
+            all_z = np.concatenate([t[2, :] for t in pred_trajs])
 
-            pred_traj = projected_trajectories[i][j]
-
-            predicted_trajectories_lines[i].set_data(
-            pred_traj[0, :],
-            pred_traj[1, :]
-            )
-            cast(Any, predicted_trajectories_lines[i]).set_3d_properties(
-            pred_traj[2, :]
-            )
+            predicted_trajectories_lines[i].set_data_3d(all_x, all_y, all_z)
 
         # Payload
         payload_marker.set_data([px], [py])
@@ -491,7 +486,8 @@ def animate_trajectories_3d(
         time_text.set_text(label)
 
         return (
-            drone_trails
+            predicted_trajectories_lines
+            + drone_trails
             + drone_markers
             + cable_lines
             + [payload_marker, time_text]

@@ -18,6 +18,9 @@ def main():
     )
     drones, payload, cables, trajectory_planner, mission_planner = initialise_objects(initial_states)
 
+    # Integration term for PID controller
+    integral_error = {drone.id: np.zeros(3) for drone in drones}
+
     # Main simulation loop
     history = {"t": [], "drones": [[] for _ in drones], -1: [], "projected_trajectories": [[]for _ in drones]}
     history["plan_time"] = []
@@ -56,8 +59,11 @@ def main():
         controller_forces = {}
 
         for drone in drones:
+            # PID controller to track the planned trajectory (V1)
             ref_pos = planned_positions[drone.id][:, 0]
-            force = 10 * (ref_pos - history["drones"][drone.id][-1][:3])
+            error = ref_pos - drone.position
+            integral_error[drone.id] += error * DEFAULT_PARAMS["dt"]
+            force = DEFAULT_PARAMS["prop_gain"] * error - DEFAULT_PARAMS["deriv_gain"] * drone.v + DEFAULT_PARAMS["int_gain"] * integral_error[drone.id]  # PID control
             thrust = force
             controller_forces[drone.id] = thrust
 

@@ -23,14 +23,13 @@ DEFAULT_PARAMS: dict = {
     "omega_target":  1.0,   # rad/s
     "k_omega":       3.0,   # angular velocity P gain for steady-state orbit tracking
 
-    # Controller - Orbit radial PD
-    "kp_alt":   1.0,    # proportional gain (radial)
-    "kd_alt":   1.0,    # derivative gain (radial)
+    # Controller
+    "prop_gain": 5.0,   # proportional gain for radial control
+    "deriv_gain": 2.0,   # derivative gain for radial control
+    "int_gain": 2,   # integral gain for radial control
 
-    # Controller - Altitude (z)
     "z_target":  3.0,   # target drone height ABOVE payload, m
-    "kp_z":     1.0,   # altitude PD proportional gain
-    "kd_z":      1.0,   # altitude PD derivative gain
+
 
     # Integration
     "t_start": 0,
