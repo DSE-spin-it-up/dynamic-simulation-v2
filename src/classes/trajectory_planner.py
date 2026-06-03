@@ -86,6 +86,11 @@ class TrajectoryPlanner:
         self.sim = SimParams()
         self.veh = VehicleParams()
         self.lim = StateLimits()
+        self.ref = np.vstack([
+            np.zeros_like(np.arange(DEFAULT_PARAMS["opti_timepstep_N"]) * DEFAULT_PARAMS["dt"]), 
+            np.zeros_like(np.arange(DEFAULT_PARAMS["opti_timepstep_N"]) * DEFAULT_PARAMS["dt"]), 
+            100.0 + 3.33 * DEFAULT_PARAMS["opti_timepstep_N"] * DEFAULT_PARAMS["dt"]
+            ])
 
     def udpate_mission_phase(self, mission_phase: int):
         self.mission_phase = mission_phase
