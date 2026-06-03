@@ -1,10 +1,68 @@
 import casadi as ca
 import numpy as np
 
-from ..utils.default_params import DEFAULT_PARAMS
+from ..utils.default_params import DEFAULT_PARAMS, VehicleParams, StateLimits, SimParams, NLP
 
 from .drone import Drone
 from .payload import Payload
+
+# --------------- helper physics functions for the aircraft dyamics -------------------------------
+def drone_rhs(x, u, F_ext, veh: VehicleParams):
+    """3-DOF fixed-wing point-mass dynamics with external force F_ext (CasADi)."""
+    V, gamma, chi = x[0], x[1], x[2]
+    T, alpha, mu  = u[0], u[1], u[2]
+
+    q = 0.5 * veh.rho * V**2 * veh.S
+    CL = veh.CL0 + veh.CLa * alpha
+    L = q * CL
+    D = q * (veh.CD0 + 1 / (np.pi * veh.AR * veh.e) * CL**2)
+
+    t_hat = ca.vertcat(ca.cos(gamma) * ca.cos(chi),
+                       ca.cos(gamma) * ca.sin(chi), ca.sin(gamma))
+    n_hat = ca.vertcat(-ca.sin(gamma) * ca.cos(chi),
+                       -ca.sin(gamma) * ca.sin(chi), ca.cos(gamma))
+    h_hat = ca.vertcat(-ca.sin(chi), ca.cos(chi), 0.0)
+    Ft, Fn, Fh = ca.dot(F_ext, t_hat), ca.dot(F_ext, n_hat), ca.dot(F_ext, h_hat)
+
+    V_dot     = (T * ca.cos(alpha) - D) / veh.m - veh.g * ca.sin(gamma) + Ft / veh.m
+    gamma_dot = ((L + T * ca.sin(alpha)) * ca.cos(mu) - veh.m * veh.g * ca.cos(gamma)
+                 + Fn) / (veh.m * V)
+    chi_dot   = ((L + T * ca.sin(alpha)) * ca.sin(mu) + Fh) \
+                / (veh.m * V * ca.cos(gamma))
+    pn_dot = V * ca.cos(chi) * ca.cos(gamma)
+    pe_dot = V * ca.sin(chi) * ca.cos(gamma)
+    h_dot  = V * ca.sin(gamma)
+    return ca.vertcat(V_dot, gamma_dot, chi_dot, pn_dot, pe_dot, h_dot)
+
+
+def payload_rhs(pL, vL, xs, Tcs, veh: VehicleParams):
+    """Payload point-mass dynamics: gravity + cable-tension reactions.
+    Returns the state derivative (pL_dot, vL_dot). Cable directions are
+    recomputed from the current UAV positions in xs."""
+    F_pay = ca.vertcat(0.0, 0.0, -veh.m_L * veh.g)
+    v_norm = ca.sqrt(ca.dot(vL, vL) + 1e-9)
+    F_pay = F_pay - 0.5 * veh.rho * veh.CD0_payload * veh.S_payload * v_norm * vL        # gravity on payload
+    for i in range(len(xs)):
+        d     = xs[i][3:6] - pL
+        u_hat = d / ca.sqrt(ca.dot(d, d) + 1e-9)          # payload -> UAV
+        F_pay = F_pay + Tcs[i] * u_hat                    # cable reaction
+    pL_dot = vL
+    vL_dot = F_pay / veh.m_L
+    return pL_dot, vL_dot
+
+
+def coupled_rhs(xs, us, Tcs, pL, vL, veh: VehicleParams, sim: SimParams):
+    """Time derivatives of the WHOLE coupled system (all UAVs + payload), with
+    cable tensions Tcs held constant over dt. Pure dynamics evaluation; the
+    integration scheme is applied by the caller (see build_nlp)."""
+    xs_dot = []
+    for i in range(sim.N_uav):
+        d     = xs[i][3:6] - pL
+        u_hat = d / ca.sqrt(ca.dot(d, d) + 1e-9)            # payload -> UAV
+        xs_dot.append(drone_rhs(xs[i], us[i], -Tcs[i] * u_hat, veh))
+
+    pL_dot, vL_dot = payload_rhs(pL, vL, xs, Tcs, veh)
+    return xs_dot, pL_dot, vL_dot
 
 class TrajectoryPlanner:
     """Build a trajectory optimization problem and let phases add constraints to it."""
@@ -25,6 +83,9 @@ class TrajectoryPlanner:
         self._last_pos_sol = None
         self._last_vel_sol = None
         self._last_F_sol = None
+        self.sim = SimParams()
+        self.veh = VehicleParams()
+        self.lim = StateLimits()
 
     def udpate_mission_phase(self, mission_phase: int):
         self.mission_phase = mission_phase
@@ -35,7 +96,6 @@ class TrajectoryPlanner:
         self.payload_target_t = float(target_time)
 
     def calculate_traj_step(self, t, drones: list[Drone], payload: Payload, mission_phase: int) -> tuple[list[np.ndarray], list[np.ndarray]]:
-        print(f"Calculating trajectory step at time {t:.2f}")
         # ── Update mission phase ──────────────────────────────────────────────────────
         self.mission_phase = mission_phase
 
@@ -104,19 +164,19 @@ class TrajectoryPlanner:
         opti = ca.Opti()
 
         # ────────────────── Create optimization variables ─────────────────────────────────────────
-        N = self.n_drones
-        opti_N = self.horizon_steps
-        # att = [opti.variable(3, opti_N) for _ in range(N)]
-        pos = [opti.variable(3, opti_N) for _ in range(N)]
-        vel = [opti.variable(3, opti_N) for _ in range(N)]
-        F   = [opti.variable(3, opti_N) for _ in range(N)]
-        X0 = [opti.parameter(6) for _ in range(N)]
+
+        x           = [opti.variable(6, self.sim.N) for _ in range(self.sim.N_uav)]
+        u           = [opti.variable(3, self.sim.N) for _ in range(self.sim.N_uav)]
+        Tc          = [opti.variable(1, self.sim.N) for _ in range(self.sim.N_uav)]
+        payload_pos = opti.variable(3, self.sim.N)
+        payload_vel = opti.variable(3, self.sim.N)
+
 
         # ────────────────── Build generic objective and constraints ───────────────────────────────────────
-        self.add_generic_constraints(opti, pos, vel, F, X0)
+        self.add_generic_constraints(opti, x, u, Tc)
         
         # ────────────── Build objective ───────────────────────────────────────────────────────────────
-        self.add_payload_tracking_objective(opti, pos, F)
+        self.add_payload_tracking_objective(opti, x)
 
         self._opti = opti
         self._pos = pos
@@ -163,30 +223,12 @@ class TrajectoryPlanner:
                     opti.subject_to(ca.dot(diff, diff) >= min_distance**2)
         return None
     
-    def add_payload_tracking_objective(self, opti: ca.Opti, pos, F) -> None:
+    def add_payload_tracking_objective(self, opti: ca.Opti, payload_pos: ca.MX) -> None:
         '''Add objective to track payload target at target time.'''
-        # Find the index of the optimization timestep closest to the payload target time
-        opti_dt = self.params["opti_dt"]
-        opti_N = self.horizon_steps
-        N = self.n_drones
-        effort_weight = 1e-4
-        smoothness_weight = 1e-2
-
-        target_k = int(self.payload_target_t / opti_dt)
-        if target_k >= opti_N:
-            target_k = opti_N - 1
-
-        # Average drone position at target time
-        avg_pos_at_target = sum(pos[i][:, target_k] for i in range(N)) / N
-
-        # Objective: minimize distance from average position to payload target
-        error = avg_pos_at_target - ca.DM(self.payload_target)
-        cost = ca.dot(error, error)
-
-        for i in range(N):
-            cost += effort_weight * ca.sumsqr(F[i])
-            cost += smoothness_weight * ca.sumsqr(pos[i][:, 1:] - pos[i][:, :-1])
-
+        # Cost: track the reference with the payload, plus a thrust-effort penalty.
+        cost = ca.sumsqr(payload_pos - ref)
+        # for i in range(sim.N_uav):
+        #     cost += R_T * ca.sumsqr(u[i][0, :])  # thrust effort
         opti.minimize(cost)
 
     def custom_constraint_placeholder(self, opti: ca.Opti) -> None:
