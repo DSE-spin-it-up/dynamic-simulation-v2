@@ -45,7 +45,7 @@ DEFAULT_PARAMS: dict = {
     "Opti_max_iter": 1000,   # maximum iterations for the optimizer
 
     # Physical limits
-    "max_thrust": 140,   # maximum thrust per drone, N
+    "max_thrust": 180,   # maximum thrust per drone, N
     "min_distance": 6.0,    # minimum distance between drones, m
     
     # Mission parameters
@@ -62,7 +62,7 @@ DEFAULT_PARAMS: dict = {
     "CLa": 4.6,      # lift-curve slope, 1/rad
     "CD0": 0.02,
     "CD0_payload": 1.07,
-    "S_payload": 0.56,   # reference area for payload drag, m^2
+    "S_payload": 0.31,   # reference area for payload drag, m^2
 
 }
 
@@ -100,18 +100,19 @@ class VehicleParams:
 @dataclass
 class StateLimits:
     """State / control limits."""
-    V_min:     float = 10.0
+    V_min:     float = 14.0
     V_max:     float = 30.0
     gam_max:   float = np.deg2rad(45.0)
     T_min:     float = 0.0
-    T_max:     float = DEFAULT_PARAMS["max_thrust"]         # maybe change to vtol thrust
-    P_max:     float =  2700 # max propulsive power per UAV [W]
+    T_max:     float = DEFAULT_PARAMS["max_thrust"]
+    P_max:     float = 2700  # max propulsive power per UAV [W]
     alpha_min: float = np.deg2rad(-15.0)
     alpha_max: float = np.deg2rad(10.0)
     mu_max:    float = np.deg2rad(35.0)
-    d_min:     float = DEFAULT_PARAMS["min_distance"]              # min distance between any two UAVs [m]
+    d_min:     float = DEFAULT_PARAMS["min_distance"]
     V_cruise:  float = 20.0
-    Tc_max:    float = 500.0  # max cable tension [N]
+    Tc_min:    float = 0.0
+    Tc_max:    float = 750.0  # max cable tension [N]
 
 @dataclass
 class OptiVariables:

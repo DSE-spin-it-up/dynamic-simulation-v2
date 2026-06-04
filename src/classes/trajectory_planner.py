@@ -1,13 +1,11 @@
 import casadi as ca
-from matplotlib.pylab import gamma
 import numpy as np
 
 from ..utils.default_params import DEFAULT_PARAMS, VehicleParams, StateLimits, SimParams, OptiVariables
+from ..utils.initial_states import cruise_offsets, _equilibrium_forward_offset
 
 from .drone import Drone
 from .payload import Payload
-from src.classes import cable, payload
-from src.classes import drone
 
 # --------------- helper physics functions for the aircraft dyamics -------------------------------
 def drone_rhs(x, u, F_ext, veh: VehicleParams):
@@ -76,13 +74,30 @@ class TrajectoryPlanner:
         self.veh = VehicleParams()
         self.lim = StateLimits()
         self._window_time = DEFAULT_PARAMS["opti_N_h"] * DEFAULT_PARAMS["opti_dt"]
-        t = np.arange(DEFAULT_PARAMS["opti_N_h"]) * DEFAULT_PARAMS["opti_dt"]
 
-        self.ref = np.vstack([
-            20.0 * t,                      # x: constant horizontal speed
-            np.zeros_like(t),             # y: no lateral motion
-            np.full_like(t, 100.0)        # z: constant altitude
-        ])
+        # Cruise reference configuration (heading east, payload at 100 m altitude)
+        self.heading        = np.pi / 2
+        self.lateral_offset = 6.0
+        self.payload_pos0   = np.array([0.0, 0.0, 100.0])
+        self.uav_offsets    = cruise_offsets(self.veh, self.lim, self.heading,
+                                             self.lateral_offset)
+
+        # Pre-compute cruise trim values for warm-starting
+        nu = self.sim.N_uav
+        _F_drag    = 0.5 * self.veh.rho * self.veh.CD0_payload * self.veh.S_payload * self.lim.V_cruise**2
+        self._Tc_trim = float(np.sqrt((self.veh.m_L * self.veh.g / nu)**2 + (_F_drag / nu)**2))
+        _f_eq      = _equilibrium_forward_offset(self.veh, self.lim, self.lateral_offset)
+        _f_frac    = _f_eq / self.veh.cable_len
+        _v_frac    = np.sqrt(max(1.0 - _f_frac**2, 0.0))
+        _q         = 0.5 * self.veh.rho * self.lim.V_cruise**2 * self.veh.S
+        _CL_trim   = (self.veh.m * self.veh.g + self._Tc_trim * _v_frac) / _q
+        _D_trim    = _q * (self.veh.CD0 + _CL_trim**2 / (np.pi * self.veh.AR * self.veh.e))
+        self._T_trim     = float(np.clip(_D_trim + self._Tc_trim * _f_frac,
+                                         self.lim.T_min, self.lim.T_max))
+        self._alpha_trim = float(np.clip((_CL_trim - self.veh.CL0) / self.veh.CLa,
+                                         self.lim.alpha_min, self.lim.alpha_max))
+
+        self._prev_sol = None  # stores previous window solution for warm-start shifting
 
     def update_mission_phase(self, mission_phase: int):
         self.mission_phase = mission_phase
@@ -94,47 +109,58 @@ class TrajectoryPlanner:
         # ── Build generic optimizer ───────────────────────────────────────────────────
         opti, opti_variables = self.build_optimizer(drones, payload)
 
+        # ────────────── Sliding window reference ─────────────────────────────────────
+        # Absolute payload reference for this horizon: east at V_cruise, height=100 m
+        t_nodes    = t + np.arange(self.sim.N_h) * self.sim.dt
+        ref_window = np.vstack([
+            np.zeros(self.sim.N_h),
+            self.lim.V_cruise * t_nodes,
+            np.full(self.sim.N_h, self.payload_pos0[2]),
+        ])
+
         # ────────────── Build objective ───────────────────────────────────────────────
-        # Add other objectives depending on mission phase
-        self.add_payload_tracking_objective(opti, opti_variables)
+        self.add_payload_tracking_objective(opti, opti_variables, ref_window)
 
         # ────────────── Warm-start ────────────────────────────────────────────────────
+        N_h = self.sim.N_h
+        if self._prev_sol is None:
+            # First window: use reference trajectory + formation offsets as position
+            # guess, cruise trim values for controls and tensions.
+            pL_guess = ref_window
+            vL_guess = np.tile(
+                self.lim.V_cruise * np.array([np.cos(self.heading),
+                                              np.sin(self.heading), 0.0])[:, None],
+                (1, N_h))
+            opti.set_initial(opti_variables.payload_pos, pL_guess)
+            opti.set_initial(opti_variables.payload_vel, vL_guess)
+            for i in range(self.sim.N_uav):
+                pos_guess = pL_guess + np.asarray(self.uav_offsets[i])[:, None]
+                x_guess   = np.zeros((6, N_h))
+                x_guess[0, :] = self.lim.V_cruise
+                x_guess[1, :] = 0.0
+                x_guess[2, :] = self.heading
+                x_guess[3:6, :] = pos_guess
+                opti.set_initial(opti_variables.x[i], x_guess)
+                opti.set_initial(opti_variables.u[i],
+                                 np.tile([self._T_trim, self._alpha_trim, 0.0],
+                                         (N_h, 1)).T)
+                opti.set_initial(opti_variables.Tc[i],
+                                 np.full((1, N_h), self._Tc_trim))
+        else:
+            # Subsequent windows: shift previous solution forward by N_apply nodes.
+            n = self._prev_sol["n_apply"]
 
-        # Warm-start the solver (to be implemented, for now use current states
-        for i, drone in enumerate(drones):
-            V = np.linalg.norm(drone.v)
-            V = max(V, self.lim.V_min)  # never let V=0
+            def shift(a):
+                return np.hstack([a[:, n:], np.tile(a[:, -1:], (1, n))])
 
-            if V > 1e-3:
-                gamma = np.arcsin(np.clip(drone.v[2] / V, -1, 1))
-                chi   = np.arctan2(drone.v[1], drone.v[0])
-            else:
-                gamma = 0.0
-                chi   = 0.0
-
-            x0 = np.array([V, gamma, chi,
-                   drone.position[0],
-                   drone.position[1],
-                   drone.position[2]])
-
-            # Tile constant initial state across horizon as warm-start
-            opti.set_initial(opti_variables.x[i], np.tile(x0[:, None], (1, self.sim.N_h)))
-        for i in range(self.sim.N_uav):
-            # Trim: T*cos(alpha) ≈ D, L ≈ m*g  →  roughly level flight
-            alpha_trim = 0.05   # small positive AoA
-            CL_trim    = self.veh.CL0 + self.veh.CLa * alpha_trim
-            V_trim     = max(np.linalg.norm(drones[i].v), self.lim.V_min)
-            q_trim     = 0.5 * self.veh.rho * V_trim**2 * self.veh.S
-            T_trim     = q_trim * (self.veh.CD0 + CL_trim**2 /
-                           (np.pi * self.veh.AR * self.veh.e))
-
-            u0 = np.array([T_trim, alpha_trim, 0.0])   # [T, alpha, mu]
-            opti.set_initial(opti_variables.u[i], np.tile(u0[:, None], (1, self.sim.N_h)))
-
-        T_cable_0 = (self.veh.m_L * self.veh.g) / self.sim.N_uav
-        for i in range(self.sim.N_uav):
-            opti.set_initial(opti_variables.Tc[i],
-                     np.full((1, self.sim.N_h), T_cable_0))
+            for i in range(self.sim.N_uav):
+                opti.set_initial(opti_variables.x[i],  shift(self._prev_sol["x"][i]))
+                opti.set_initial(opti_variables.u[i],  shift(self._prev_sol["u"][i]))
+                opti.set_initial(opti_variables.Tc[i], shift(self._prev_sol["Tc"][i]))
+            opti.set_initial(opti_variables.payload_pos,
+                             shift(self._prev_sol["payload_pos"]))
+            opti.set_initial(opti_variables.payload_vel,
+                             shift(self._prev_sol["payload_vel"]))
 
         # ── Solve ─────────────────────────────────────────────────────────────────────
 
@@ -154,6 +180,19 @@ class TrajectoryPlanner:
 
             x_sol = [sol.value(opti_variables.x[i]) for i in range(self.sim.N_uav)]
             sol_time = self._window_time
+
+            # Store full solution for warm-starting the next window
+            self._prev_sol = {
+                "x":           [np.asarray(sol.value(opti_variables.x[i])).reshape(6, self.sim.N_h)
+                                 for i in range(self.sim.N_uav)],
+                "u":           [np.asarray(sol.value(opti_variables.u[i])).reshape(3, self.sim.N_h)
+                                 for i in range(self.sim.N_uav)],
+                "Tc":          [np.asarray(sol.value(opti_variables.Tc[i])).reshape(1, self.sim.N_h)
+                                 for i in range(self.sim.N_uav)],
+                "payload_pos": np.asarray(sol.value(opti_variables.payload_pos)).reshape(3, self.sim.N_h),
+                "payload_vel": np.asarray(sol.value(opti_variables.payload_vel)).reshape(3, self.sim.N_h),
+                "n_apply":     DEFAULT_PARAMS["opti_N_apply"],
+            }
 
         except Exception as e:
             print("Failed:", e)
@@ -238,14 +277,9 @@ class TrajectoryPlanner:
             # maybe soften this later?
             opti.subject_to(opt_variables.x[i][:, 0] == x0)
 
-        # Payload (soft constraints)
-
-        opti.subject_to(
-            ca.sumsqr(opt_variables.payload_pos[:, 0] - payload.position) <= 1e-3
-        )
-        opti.subject_to(
-            ca.sumsqr(opt_variables.payload_vel[:, 0] - payload.v) <= 1e-3
-        )
+        # Payload (hard equality)
+        opti.subject_to(opt_variables.payload_pos[:, 0] == payload.position)
+        opti.subject_to(opt_variables.payload_vel[:, 0] == payload.v)
 
         # Enforce dynamics
         for k in range(self.sim.N_h - 1):
@@ -291,25 +325,24 @@ class TrajectoryPlanner:
                 opti.bounded(0.0, opt_variables.Tc[i], self.lim.Tc_max) # type: ignore
             )
 
-        # Soft hardware cable constraint
-
-        L_min = self.veh.cable_len - self.veh.cable_tol   # 12.4 m
-        L_max = self.veh.cable_len + self.veh.cable_tol   # 12.6 m
-        for k in range(self.sim.N_h):
-            d = opt_variables.x[i][3:6, k] - opt_variables.payload_pos[:, k]
-            opti.subject_to(opti.bounded(L_min**2, ca.dot(d, d), L_max**2)) # type: ignore
-
-
-        # Collision avoidance constraint (soft)
-
-        for j in range(i + 1, self.sim.N_uav):
+            # Cable length: keep UAV i within cable_tol of cable_len (all drones)
+            L_min = self.veh.cable_len - self.veh.cable_tol
+            L_max = self.veh.cable_len + self.veh.cable_tol
             for k in range(self.sim.N_h):
-                d = opt_variables.x[i][3:6, k] - opt_variables.x[j][3:6, k]
-                opti.subject_to(ca.dot(d, d) >= self.lim.d_min**2)
+                d = opt_variables.x[i][3:6, k] - opt_variables.payload_pos[:, k]
+                opti.subject_to(opti.bounded(L_min**2, ca.dot(d, d), L_max**2)) # type: ignore
 
-    def add_payload_tracking_objective(self, opti: ca.Opti, opt_variables: OptiVariables) -> None:
+        # Collision avoidance: every pair of UAVs at least d_min apart
+        for i in range(self.sim.N_uav):
+            for j in range(i + 1, self.sim.N_uav):
+                for k in range(self.sim.N_h):
+                    d = opt_variables.x[i][3:6, k] - opt_variables.x[j][3:6, k]
+                    opti.subject_to(ca.dot(d, d) >= self.lim.d_min**2)
 
-        cost = ca.sumsqr(opt_variables.payload_pos - self.ref)
+    def add_payload_tracking_objective(self, opti: ca.Opti, opt_variables: OptiVariables,
+                                       ref: np.ndarray) -> None:
+
+        cost = ca.sumsqr(opt_variables.payload_pos - ref)
 
 
         # Cruise weights for UAV state terms.

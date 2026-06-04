@@ -5,16 +5,20 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.utils.initialise_objects import initialise_objects
-from src.utils.default_params import DEFAULT_PARAMS
-from src.utils.initial_states import get_initial_states
+from src.utils.default_params import DEFAULT_PARAMS, VehicleParams, StateLimits
+from src.utils.initial_states import get_cruise_initial_states
 from src.simulation.physics import compute_net_forces, compute_forces, update_state
 from src.visualizations.plot import animate_trajectories_3d
 
 
 def main():
-    initial_states = get_initial_states(
+    initial_states = get_cruise_initial_states(
+        veh=VehicleParams(),
+        lim=StateLimits(),
         num_drones=DEFAULT_PARAMS["n_drones"],
-        payload_pos=np.array([0.0, 0.0, 0.0]),
+        payload_pos=np.array([0.0, 0.0, 100.0]),
+        heading=np.pi / 2,
+        lateral_offset=6.0,
     )
     drones, payload, cables, trajectory_planner, mission_planner = initialise_objects(initial_states)
 
