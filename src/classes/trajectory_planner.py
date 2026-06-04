@@ -76,11 +76,13 @@ class TrajectoryPlanner:
         self.veh = VehicleParams()
         self.lim = StateLimits()
         self._window_time = DEFAULT_PARAMS["opti_N_h"] * DEFAULT_PARAMS["opti_dt"]
+        t = np.arange(DEFAULT_PARAMS["opti_N_h"]) * DEFAULT_PARAMS["opti_dt"]
+
         self.ref = np.vstack([
-            np.zeros_like(np.arange(DEFAULT_PARAMS["opti_N_h"]) * DEFAULT_PARAMS["opti_dt"]), 
-            np.zeros_like(np.arange(DEFAULT_PARAMS["opti_N_h"]) * DEFAULT_PARAMS["opti_dt"]), 
-            100.0 + 3.33 * np.arange(DEFAULT_PARAMS["opti_N_h"]) * DEFAULT_PARAMS["opti_dt"]
-            ])
+            20.0 * t,                      # x: constant horizontal speed
+            np.zeros_like(t),             # y: no lateral motion
+            np.full_like(t, 100.0)        # z: constant altitude
+        ])
 
     def update_mission_phase(self, mission_phase: int):
         self.mission_phase = mission_phase
@@ -148,6 +150,11 @@ class TrajectoryPlanner:
         })
         try:
             sol = opti.solve()
+                    # ── Extract solution ──────────────────────────────────────────────────────────
+
+            x_sol = [sol.value(opti_variables.x[i]) for i in range(self.sim.N_uav)]
+            sol_time = self._window_time
+
         except Exception as e:
             print("Failed:", e)
     
@@ -185,13 +192,9 @@ class TrajectoryPlanner:
                 print(f"Drone {i}: V in [{V.min():.2f}, {V.max():.2f}], "
                 f"T in [{T.min():.2f}, {T.max():.2f}], "
                 f"Tc in [{Tc.min():.2f}, {Tc.max():.2f}]")
+            return None, None # type: ignore
 
-        # ── Extract solution ──────────────────────────────────────────────────────────
-
-        x_sol = [sol.value(opti_variables.x[i]) for i in range(self.sim.N_uav)]
-        u_sol = [sol.value(opti_variables.u[i]) for i in range(self.sim.N_uav)]
-
-        return x_sol, u_sol
+        return x_sol, sol_time
     
     def build_optimizer(self, drones, payload) -> tuple[ca.Opti, OptiVariables]:
         '''Build a generic casadi optimizer with basic variables, and constraints.'''

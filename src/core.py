@@ -49,9 +49,14 @@ def main():
                 payload=payload,
                 mission_phase=mission_command.phase,
             )
+            if planned_positions is None:
+                t = 100000
+                break
             for drone_n in range(DEFAULT_PARAMS["n_drones"]):
                 history["projected_trajectories"][drone_n].append(planned_positions[drone_n])
             history["plan_time"].append(t)
+            print(f"First projected drone position in new plan at t={t:.2f}: {planned_positions[0]}")
+            print(f"drone position at t={t:.2f}: {drones[0].position}")
 
         # ---------------------------------- CONTROL UPDATES ----------------------------------------
 
@@ -60,7 +65,11 @@ def main():
 
         for drone in drones:
             # PID controller to track the planned trajectory (V1)
-            ref_pos = planned_positions[drone.id][:, 0]
+            # find ref pos with the drone id and the window time
+            k = int(round((t - history["plan_time"][-1]) / DEFAULT_PARAMS["dt"]))
+            k = np.clip(k, 0, planned_positions[drone.id].shape[1] - 1)
+            ref_state = planned_positions[drone.id][:, k]
+            ref_pos = ref_state[3:6]
             error = ref_pos - drone.position
             integral_error[drone.id] += error * DEFAULT_PARAMS["dt"]
             force = DEFAULT_PARAMS["prop_gain"] * error - DEFAULT_PARAMS["deriv_gain"] * drone.v + DEFAULT_PARAMS["int_gain"] * integral_error[drone.id]  # PID control

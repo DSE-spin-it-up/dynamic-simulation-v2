@@ -26,7 +26,7 @@ DEFAULT_PARAMS: dict = {
     "R":             12,   # nominal orbit radius, m
 
     # Controller
-    "prop_gain": 5.0,   # proportional gain for radial control
+    "prop_gain": 50.0,   # proportional gain for radial control
     "deriv_gain": 2.0,   # derivative gain for radial control
     "int_gain": 2,   # integral gain for radial control
 
@@ -105,7 +105,7 @@ class StateLimits:
     gam_max:   float = np.deg2rad(45.0)
     T_min:     float = 0.0
     T_max:     float = DEFAULT_PARAMS["max_thrust"]         # maybe change to vtol thrust
-    P_max:     float =  6000 # max propulsive power per UAV [W]
+    P_max:     float =  2700 # max propulsive power per UAV [W]
     alpha_min: float = np.deg2rad(-15.0)
     alpha_max: float = np.deg2rad(10.0)
     mu_max:    float = np.deg2rad(35.0)

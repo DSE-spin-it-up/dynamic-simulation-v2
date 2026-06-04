@@ -467,9 +467,9 @@ def animate_trajectories_3d(
             [pz, xyz[k, 2]])
 
             pred_trajs = projected_trajectories[i]  # list of all chunks
-            all_x = np.concatenate([t[0, :] for t in pred_trajs])
-            all_y = np.concatenate([t[1, :] for t in pred_trajs])
-            all_z = np.concatenate([t[2, :] for t in pred_trajs])
+            all_x = np.concatenate([t[3, :] for t in pred_trajs])
+            all_y = np.concatenate([t[4, :] for t in pred_trajs])
+            all_z = np.concatenate([t[5, :] for t in pred_trajs])
 
             predicted_trajectories_lines[i].set_data_3d(all_x, all_y, all_z)
 
