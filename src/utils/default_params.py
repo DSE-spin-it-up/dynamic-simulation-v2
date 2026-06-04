@@ -41,7 +41,8 @@ DEFAULT_PARAMS: dict = {
     "dt":      0.01,    # output time-step (not the ODE step)
 
     # Optimiser
-    "opti_timepstep_N": 20,   # number of time steps in the trajectory optimization horizon
+    "opti_N_h": 20,   # number of time steps in the trajectory optimization horizon
+    "opti_N_apply": 5, # number of time steps to apply before re-optimizing
     "opti_dt": 0.1,    # time step between optimization points (s)
     "Opti_max_iter": 1000,   # maximum iterations for the optimizer
 
@@ -70,11 +71,10 @@ DEFAULT_PARAMS: dict = {
 @dataclass
 class SimParams:
     """Simulation / discretization parameters."""
-    N_uav:   int   = 3      # number of UAVs (change freely)
-    N:       int   = DEFAULT_PARAMS["opti_timepstep_N"]   # number of timesteps (total time = (N-1)*dt)
+    N_uav:   int   = DEFAULT_PARAMS["n_drones"]      # number of UAVs (change freely)
     dt:      float = DEFAULT_PARAMS["opti_dt"]   # timestep size [s]
-    N_h:     int   = 20     # receding-horizon window length [nodes]
-    N_apply: int   = 5     # nodes committed per window [nodes]
+    N_h:     int   = DEFAULT_PARAMS["opti_N_h"]     # receding-horizon window length [nodes]
+    N_apply: int   = DEFAULT_PARAMS["opti_N_apply"]     # nodes committed per window [nodes]
 
 
 @dataclass
