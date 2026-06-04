@@ -25,9 +25,9 @@ def main():
     history = {"t": [], "drones": [[] for _ in drones], -1: [], "projected_trajectories": [[]for _ in drones]}
     history["plan_time"] = []
     t = DEFAULT_PARAMS["t_start"]
-    waypoints_hold = int(round(DEFAULT_PARAMS["opti_dt"] / DEFAULT_PARAMS["dt"])) * DEFAULT_PARAMS["opti_timepstep_N"]
+    waypoints_hold = DEFAULT_PARAMS["opti_N_apply"] * (DEFAULT_PARAMS["opti_dt"] / DEFAULT_PARAMS["dt"])  # number of time steps to hold each planned waypoint
 
-    counter_waypoint = 0
+    n_sim_loops = 0 # counter to track how many time steps have been taken since the last trajectory plan, used to determine when to update the planned trajectory
     planned_positions = None
 
     while t < DEFAULT_PARAMS["t_end"]:
@@ -42,7 +42,7 @@ def main():
 
         mission_command = mission_planner.update(t, drones, payload, cables)
         # Run the planner only after the previous trajectory has been used
-        if planned_positions is None or counter_waypoint % waypoints_hold == 0:
+        if planned_positions is None or n_sim_loops % waypoints_hold == 0:
             planned_positions, planned_time = trajectory_planner.calculate_traj_step(
                 t,
                 drones=drones,
@@ -88,7 +88,7 @@ def main():
 
         # Time update
         t += DEFAULT_PARAMS["dt"]
-        counter_waypoint += 1
+        n_sim_loops += 1
 
 
     history["t"] = np.asarray(history["t"])

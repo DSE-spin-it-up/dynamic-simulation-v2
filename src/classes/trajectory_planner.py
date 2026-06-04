@@ -116,7 +116,7 @@ class TrajectoryPlanner:
                    drone.position[2]])
 
             # Tile constant initial state across horizon as warm-start
-            opti.set_initial(opti_variables.x[i], np.tile(x0[:, None], (1, self.sim.N)))
+            opti.set_initial(opti_variables.x[i], np.tile(x0[:, None], (1, self.sim.N_h)))
         for i in range(self.sim.N_uav):
             # Trim: T*cos(alpha) ≈ D, L ≈ m*g  →  roughly level flight
             alpha_trim = 0.05   # small positive AoA
@@ -127,12 +127,12 @@ class TrajectoryPlanner:
                            (np.pi * self.veh.AR * self.veh.e))
 
             u0 = np.array([T_trim, alpha_trim, 0.0])   # [T, alpha, mu]
-            opti.set_initial(opti_variables.u[i], np.tile(u0[:, None], (1, self.sim.N)))
+            opti.set_initial(opti_variables.u[i], np.tile(u0[:, None], (1, self.sim.N_h)))
 
         T_cable_0 = (self.veh.m_L * self.veh.g) / self.sim.N_uav
         for i in range(self.sim.N_uav):
             opti.set_initial(opti_variables.Tc[i],
-                     np.full((1, self.sim.N), T_cable_0))
+                     np.full((1, self.sim.N_h), T_cable_0))
 
         # ── Solve ─────────────────────────────────────────────────────────────────────
 
@@ -156,7 +156,7 @@ class TrajectoryPlanner:
     
             # Dynamics residuals
             for i in range(self.sim.N_uav):
-                for k in range(self.sim.N - 1):
+                for k in range(self.sim.N_h - 1):
                     res = opti.debug.value(
                         opti_variables.x[i][:, k+1] - opti_variables.x[i][:, k]
                     )
@@ -170,7 +170,7 @@ class TrajectoryPlanner:
     
             # Cable lengths
             for i in range(self.sim.N_uav):
-                for k in range(self.sim.N):
+                for k in range(self.sim.N_h):
                     d = opti.debug.value(
                         opti_variables.x[i][3:6, k] - opti_variables.payload_pos[:, k]
                     )
@@ -320,12 +320,12 @@ class TrajectoryPlanner:
 
             # Level flight: penalise non-zero flight-path angle (gamma).
             # Keep each UAV approximately level during cruise
-            cost += W_gamma * ca.sumsqr(x[i][1, :])
+            cost += W_gamma * ca.sumsqr(opt_variables.x[i][1, :])
 
             # Heading-rate penalty: penalise chi changes between consecutive nodes to
             # suppress heading oscillations. sin(Δchi) handles ±π wrap-around; for
             # the small per-step changes expected in cruise sin(Δchi) ≈ Δchi.
-            dchi = ca.sin(x[i][2, 1:] - x[i][2, :-1])
+            dchi = ca.sin(opt_variables.x[i][2, 1:] - opt_variables.x[i][2, :-1])
             cost += W_chi * ca.sumsqr(dchi)
 
         # Control-rate penalty: discourage sharp input gradients between nodes. The
