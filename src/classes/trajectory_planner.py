@@ -71,35 +71,30 @@ class TrajectoryPlanner:
 
     def __init__(self, mission_phase: int = 0):
         self.mission_phase = mission_phase
-        self.params = DEFAULT_PARAMS
-        self.n_drones = self.params["n_drones"]
-        self.horizon_steps = self.params["opti_timepstep_N"]
-        self.payload_target = np.zeros(3)
-        self.payload_target_t = 0.0
-        self.next_traj_step_t = 0.0
         self.sim = SimParams()
         self.veh = VehicleParams()
         self.lim = StateLimits()
         self.ref = np.vstack([
             np.zeros_like(np.arange(DEFAULT_PARAMS["opti_timepstep_N"]) * DEFAULT_PARAMS["dt"]), 
             np.zeros_like(np.arange(DEFAULT_PARAMS["opti_timepstep_N"]) * DEFAULT_PARAMS["dt"]), 
-            20.0 + 3.33 * np.arange(DEFAULT_PARAMS["opti_timepstep_N"]) * DEFAULT_PARAMS["dt"]
+            100.0 + 3.33 * np.arange(DEFAULT_PARAMS["opti_timepstep_N"]) * DEFAULT_PARAMS["dt"]
             ])
 
-    def udpate_mission_phase(self, mission_phase: int):
+    def update_mission_phase(self, mission_phase: int):
         self.mission_phase = mission_phase
-
-    def set_payload_target(self, target, target_time):
-        '''Update payload target for trajectory optimization.'''
-        self.payload_target = np.asarray(target, dtype=float)
-        self.payload_target_t = float(target_time)
 
     def calculate_traj_step(self, t, drones: list[Drone], payload: Payload, mission_phase: int) -> tuple[list[np.ndarray], list[np.ndarray]]:
         # ── Update mission phase ──────────────────────────────────────────────────────
         self.mission_phase = mission_phase
 
         # ── Build generic optimizer ───────────────────────────────────────────────────
-        opti, opti_variables = self.build_generic_optimizer(drones, payload)
+        opti, opti_variables = self.build_optimizer(drones, payload)
+
+        # ────────────── Build objective ───────────────────────────────────────────────
+        # Add other objectives depending on mission phase
+        self.add_payload_tracking_objective(opti, opti_variables.payload_pos)
+
+        # ────────────── Warm-start ────────────────────────────────────────────────────
 
         # Warm-start the solver (to be implemented, for now use current states
         for i, drone in enumerate(drones):
@@ -136,10 +131,6 @@ class TrajectoryPlanner:
         for i in range(self.sim.N_uav):
             opti.set_initial(opti_variables.Tc[i],
                      np.full((1, self.sim.N), T_cable_0))
-
-
-        # ── Set specific contraints per phase ─────────────────────────────────────────
-
 
         # ── Solve ─────────────────────────────────────────────────────────────────────
 
@@ -200,8 +191,8 @@ class TrajectoryPlanner:
 
         return x_sol, u_sol
     
-    def build_generic_optimizer(self, drones, payload) -> tuple[ca.Opti, OptiVariables]:
-        '''Build a generic casadi optimizer with basic variables, objective, and constraints.'''
+    def build_optimizer(self, drones, payload) -> tuple[ca.Opti, OptiVariables]:
+        '''Build a generic casadi optimizer with basic variables, and constraints.'''
         opti = ca.Opti()
 
         # ────────────────── Create optimization variables ─────────────────────────────────────────
@@ -215,14 +206,11 @@ class TrajectoryPlanner:
 
 
         # ────────────────── Build generic objective and constraints ───────────────────────────────────────
-        self.add_generic_constraints(opti, opt_variables=opti_variables, drones=drones, payload=payload)
-        
-        # ────────────── Build objective ───────────────────────────────────────────────────────────────
-        self.add_payload_tracking_objective(opti, opti_variables.payload_pos)
+        self.add_constraints(opti, opt_variables=opti_variables, drones=drones, payload=payload)
 
         return opti, opti_variables
 
-    def add_generic_constraints(
+    def add_constraints(
         self,
         opti: ca.Opti,
         opt_variables: OptiVariables,

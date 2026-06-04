@@ -71,10 +71,10 @@ DEFAULT_PARAMS: dict = {
 class SimParams:
     """Simulation / discretization parameters."""
     N_uav:   int   = 3      # number of UAVs (change freely)
-    N:       int   = 200   # number of timesteps (total time = (N-1)*dt)
-    dt:      float = 0.005   # timestep size [s]
-    N_h:     int   = 30     # receding-horizon window length [nodes]
-    N_apply: int   = 10     # nodes committed per window [nodes]
+    N:       int   = DEFAULT_PARAMS["opti_timepstep_N"]   # number of timesteps (total time = (N-1)*dt)
+    dt:      float = DEFAULT_PARAMS["opti_dt"]   # timestep size [s]
+    N_h:     int   = 20     # receding-horizon window length [nodes]
+    N_apply: int   = 5     # nodes committed per window [nodes]
 
 
 @dataclass
