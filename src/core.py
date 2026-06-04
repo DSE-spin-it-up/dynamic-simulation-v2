@@ -41,7 +41,7 @@ def main():
         # ---------------------------------- MISSION PLANNING UPDATES ----------------------------------------
 
         mission_command = mission_planner.update(t, drones, payload, cables)
-        # Run the planner only after the previous trajectory has been used
+        # Run the planner only after Ñthe previous trajectory has been used
         if planned_positions is None or n_sim_loops % waypoints_hold == 0:
             planned_positions, planned_time = trajectory_planner.calculate_traj_step(
                 t,

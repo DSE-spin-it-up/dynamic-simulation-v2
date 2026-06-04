@@ -12,27 +12,25 @@ DEFAULT_PARAMS: dict = {
     "g": 9.81,          # gravitational acceleration, m/s²
 
     # Drone properties
-    "m_drone": 0.5,         # drone mass, kg  (each)
+    "m_drone": 6.8,         # drone mass, kg  (each)
 
     # Payload properties
-    "m_payload": 2.0,         # payload mass, kg
+    "m_payload": 60.0,         # payload mass, kg
 
     # Cable properties
-    "L0": 3.5,          # rest length, m 
-    "k_cable": 500.0,   # spring stiffness, N/m 
+    "L0": 12.5,          # rest length, m 
+    "k_cable": 100.0,   # spring stiffness, N/m 
     "d_cable":  40.0,   # damping, N·s/m
 
     # SIU Controller - Orbit geometry
-    "R":             3.0,   # nominal orbit radius, m
-    "omega_target":  1.0,   # rad/s
-    "k_omega":       3.0,   # angular velocity P gain for steady-state orbit tracking
+    "R":             12,   # nominal orbit radius, m
 
     # Controller
     "prop_gain": 5.0,   # proportional gain for radial control
     "deriv_gain": 2.0,   # derivative gain for radial control
     "int_gain": 2,   # integral gain for radial control
 
-    "z_target":  3.0,   # target drone height ABOVE payload, m
+    "z_target":  100.0,   # target drone height ABOVE payload, m
 
 
     # Integration
@@ -47,8 +45,8 @@ DEFAULT_PARAMS: dict = {
     "Opti_max_iter": 1000,   # maximum iterations for the optimizer
 
     # Physical limits
-    "max_thrust": 1,   # maximum thrust per drone, N
-    "min_distance": 1,    # minimum distance between drones, m
+    "max_thrust": 140,   # maximum thrust per drone, N
+    "min_distance": 6.0,    # minimum distance between drones, m
     
     # Mission parameters
     "h_box":                    0.5,     # payload box height above ground, m
@@ -106,12 +104,12 @@ class StateLimits:
     V_max:     float = 30.0
     gam_max:   float = np.deg2rad(45.0)
     T_min:     float = 0.0
-    T_max:     float = 140         # maybe change to vtol thrust
+    T_max:     float = DEFAULT_PARAMS["max_thrust"]         # maybe change to vtol thrust
     P_max:     float =  6000 # max propulsive power per UAV [W]
     alpha_min: float = np.deg2rad(-15.0)
     alpha_max: float = np.deg2rad(10.0)
     mu_max:    float = np.deg2rad(35.0)
-    d_min:     float = 2.0              # min distance between any two UAVs [m]
+    d_min:     float = DEFAULT_PARAMS["min_distance"]              # min distance between any two UAVs [m]
     V_cruise:  float = 20.0
     Tc_max:    float = 500.0  # max cable tension [N]
 

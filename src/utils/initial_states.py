@@ -34,7 +34,7 @@ def get_initial_states(
         np.full(num_drones, drone_z),
     ])
 
-    drone_velocities = np.tile([0.0, 0.0, 0.0], (num_drones, 1))  # all flying north
+    drone_velocities = np.tile([20.0, 0.0, 0.0], (num_drones, 1))
     payload_velocity = np.zeros(3)
 
     states = {}

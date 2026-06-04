@@ -98,7 +98,7 @@ class MissionManager:
         ] # Remove old entries outside the time window
 
         self._update_phase(inputs)
-        self.trajectory_planner.udpate_mission_phase(self.phase)
+        self.trajectory_planner.update_mission_phase(self.phase)
 
         return MissionCommand(phase=self.phase)
 
