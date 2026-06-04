@@ -15,8 +15,8 @@ DEFAULT_PARAMS: dict = {
 
     # Cable properties
     "L0": 3.5,          # rest length, m 
-    "k_cable": 500.0,   # spring stiffness, N/m 
-    "d_cable":  40.0,   # damping, N·s/m
+    "k_cable": 100000.0,   # spring stiffness, N/m 
+    "d_cable":  100.0,   # damping, N·s/m
 
     # SIU Controller - Orbit geometry
     "R":             3.0,   # nominal orbit radius, m
@@ -35,7 +35,7 @@ DEFAULT_PARAMS: dict = {
     # Integration
     "t_start": 0.0,
     "t_end":   30.0,
-    "dt":      0.01,    # output time-step (not the ODE step)
+    "dt":      0.001,    # output time-step (not the ODE step)
 
     # Mission parameters
     "h_box":                    0.5,     # payload box height above ground, m

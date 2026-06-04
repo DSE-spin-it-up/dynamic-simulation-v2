@@ -98,7 +98,6 @@ class MissionManager:
         ] # Remove old entries outside the time window
 
         self._update_phase(inputs)
-        self.trajectory_planner.update(t, drones, payload, cables)
 
         return MissionCommand(phase=self.phase)
 

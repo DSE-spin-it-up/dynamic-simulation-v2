@@ -60,7 +60,7 @@ def plot_gain_response(params: dict):
         initial_states = get_initial_states(
             num_drones=p["n_drones"], R=p["R"], L0=p["L0"], payload_pos=np.zeros(3)
         )
-        drones, payload, cables, _ = initialise_objects(initial_states)
+        drones, payload, cables, _, _ = initialise_objects(initial_states)
         return simulate(drones, payload, cables, p)
 
     def _r_eq(kp):
