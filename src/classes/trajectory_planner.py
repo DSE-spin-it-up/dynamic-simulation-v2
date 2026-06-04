@@ -1,4 +1,5 @@
 import casadi as ca
+from matplotlib.pylab import gamma
 import numpy as np
 
 from ..utils.default_params import DEFAULT_PARAMS, VehicleParams, StateLimits, SimParams, OptiVariables
@@ -74,10 +75,11 @@ class TrajectoryPlanner:
         self.sim = SimParams()
         self.veh = VehicleParams()
         self.lim = StateLimits()
+        self._window_time = DEFAULT_PARAMS["opti_N_h"] * DEFAULT_PARAMS["opti_dt"]
         self.ref = np.vstack([
-            np.zeros_like(np.arange(DEFAULT_PARAMS["opti_timepstep_N"]) * DEFAULT_PARAMS["dt"]), 
-            np.zeros_like(np.arange(DEFAULT_PARAMS["opti_timepstep_N"]) * DEFAULT_PARAMS["dt"]), 
-            100.0 + 3.33 * np.arange(DEFAULT_PARAMS["opti_timepstep_N"]) * DEFAULT_PARAMS["dt"]
+            np.zeros_like(np.arange(DEFAULT_PARAMS["opti_N_h"]) * DEFAULT_PARAMS["opti_dt"]), 
+            np.zeros_like(np.arange(DEFAULT_PARAMS["opti_N_h"]) * DEFAULT_PARAMS["opti_dt"]), 
+            100.0 + 3.33 * np.arange(DEFAULT_PARAMS["opti_N_h"]) * DEFAULT_PARAMS["opti_dt"]
             ])
 
     def update_mission_phase(self, mission_phase: int):
@@ -92,7 +94,7 @@ class TrajectoryPlanner:
 
         # ────────────── Build objective ───────────────────────────────────────────────
         # Add other objectives depending on mission phase
-        self.add_payload_tracking_objective(opti, opti_variables.payload_pos)
+        self.add_payload_tracking_objective(opti, opti_variables)
 
         # ────────────── Warm-start ────────────────────────────────────────────────────
 
@@ -197,11 +199,11 @@ class TrajectoryPlanner:
 
         # ────────────────── Create optimization variables ─────────────────────────────────────────
 
-        x = [opti.variable(6, self.sim.N) for _ in range(self.sim.N_uav)]
-        u = [opti.variable(3, self.sim.N) for _ in range(self.sim.N_uav)]
-        Tc = [opti.variable(1, self.sim.N) for _ in range(self.sim.N_uav)]
-        payload_pos = opti.variable(3, self.sim.N)
-        payload_vel = opti.variable(3, self.sim.N)
+        x = [opti.variable(6, DEFAULT_PARAMS["opti_N_h"]) for _ in range(self.sim.N_uav)]
+        u = [opti.variable(3, DEFAULT_PARAMS["opti_N_h"]) for _ in range(self.sim.N_uav)]
+        Tc = [opti.variable(1, DEFAULT_PARAMS["opti_N_h"]) for _ in range(self.sim.N_uav)]
+        payload_pos = opti.variable(3, DEFAULT_PARAMS["opti_N_h"])
+        payload_vel = opti.variable(3, DEFAULT_PARAMS["opti_N_h"])
         opti_variables = OptiVariables(x=x, u=u, Tc=Tc, payload_pos=payload_pos, payload_vel=payload_vel)
 
 
@@ -210,23 +212,30 @@ class TrajectoryPlanner:
 
         return opti, opti_variables
 
-    def add_constraints(
-        self,
-        opti: ca.Opti,
-        opt_variables: OptiVariables,
-        drones: list[Drone],
-        payload: Payload
-    ) -> None:
-
-        N = self.sim.N
-        dt = self.sim.dt
+    def add_constraints(self, opti: ca.Opti, opt_variables: OptiVariables, drones: list[Drone], payload: Payload) -> None:
 
         # Initial conditions: fix the initial state of the system to the current state (soft for payload)
+        # Drones
         for i in range(self.sim.N_uav):
-            opti.subject_to(
-                opt_variables.x[i][:, 0] ==
-                ca.vertcat(drones[i].position, drones[i].v)
+
+            vx, vy, vz = drones[i].v
+
+            V0 = np.linalg.norm([vx, vy, vz])
+            chi0 = np.arctan2(vy, vx)
+            gamma0 = np.arctan2(vz, np.sqrt(vx**2 + vy**2))
+
+            x0 = ca.vertcat(
+                V0,
+                gamma0,
+                chi0,
+                drones[i].position[0],
+                drones[i].position[1],
+               drones[i].position[2]
             )
+            # maybe soften this later?
+            opti.subject_to(opt_variables.x[i][:, 0] == x0)
+
+        # Payload (soft constraints)
 
         opti.subject_to(
             ca.sumsqr(opt_variables.payload_pos[:, 0] - payload.position) <= 1e-3
@@ -236,21 +245,17 @@ class TrajectoryPlanner:
         )
 
         # Enforce dynamics
-
-        for k in range(N - 1):
-            print(f"N={self.sim.N}, dt={self.sim.dt}, N_uav={self.sim.N_uav}")
-            print(f"Equality constraints should be: {self.sim.N_uav * 6 * (self.sim.N-1) + 6}")
-            xs_next, pL_next, vL_next = self.rk4_step(
-            [opt_variables.x[i][:, k] for i in range(self.sim.N_uav)],
-            [opt_variables.u[i][:, k] for i in range(self.sim.N_uav)],
-            [opt_variables.Tc[i][:, k] for i in range(self.sim.N_uav)],
-            opt_variables.payload_pos[:, k],
-            opt_variables.payload_vel[:, k],
-        )
-        for i in range(self.sim.N_uav):
-            opti.subject_to(opt_variables.x[i][:, k+1] == xs_next[i])
-        opti.subject_to(opt_variables.payload_pos[:, k+1] == pL_next)
-        opti.subject_to(opt_variables.payload_vel[:, k+1] == vL_next)
+        for k in range(self.sim.N_h - 1):
+            xs_dot, pos_dot, vel_dot = coupled_rhs(
+                [opt_variables.x[i][:, k + 1] for i in range(self.sim.N_uav)],
+                [opt_variables.u[i][:, k + 1] for i in range(self.sim.N_uav)],
+                [opt_variables.Tc[i][:, k + 1] for i in range(self.sim.N_uav)],
+                opt_variables.payload_pos[:, k + 1], opt_variables.payload_vel[:, k + 1], self.veh, self.sim)
+            for i in range(self.sim.N_uav):
+                opti.subject_to(opt_variables.x[i][:, k + 1] == opt_variables.x[i][:, k] + self.sim.dt * xs_dot[i])
+            opti.subject_to(opt_variables.payload_pos[:, k + 1] == opt_variables.payload_pos[:, k] + self.sim.dt * pos_dot)
+            opti.subject_to(opt_variables.payload_vel[:, k + 1] == opt_variables.payload_vel[:, k] + self.sim.dt * vel_dot)
+        
 
         # Hardware limits
 
@@ -260,9 +265,8 @@ class TrajectoryPlanner:
                 opti.bounded(self.lim.T_min, opt_variables.u[i][0, :], self.lim.T_max) # type: ignore
             )
 
-            opti.subject_to(
-                opt_variables.u[i][0, :] * opt_variables.x[i][0, :] <= self.lim.P_max
-            )
+            P = opt_variables.u[i][0, :] * opt_variables.x[i][0, :]
+            opti.subject_to(P <= self.lim.P_max)
 
             opti.subject_to(
                 opti.bounded(self.lim.alpha_min, opt_variables.u[i][1, :], self.lim.alpha_max) # type: ignore
@@ -286,44 +290,55 @@ class TrajectoryPlanner:
 
         # Soft hardware cable constraint
 
-        eps_cable = 0.3
-        w_cable = 1
+        L_min = self.veh.cable_len - self.veh.cable_tol   # 12.4 m
+        L_max = self.veh.cable_len + self.veh.cable_tol   # 12.6 m
+        for k in range(self.sim.N_h):
+            d = opt_variables.x[i][3:6, k] - opt_variables.payload_pos[:, k]
+            opti.subject_to(opti.bounded(L_min**2, ca.dot(d, d), L_max**2)) # type: ignore
 
-        cable_cost = 0
-
-        for i in range(self.sim.N_uav):
-            for k in range(1, N):   # IMPORTANT: skip k=0
-
-                d = opt_variables.x[i][3:6, k] - opt_variables.payload_pos[:, k]
-
-                dist2 = ca.dot(d, d)
-                err = dist2 - self.veh.cable_len**2
-
-                cable_cost += w_cable * err**2 + eps_cable * ca.fabs(err)
-
-        # add to objective later via shared cost
-        self._cable_cost = cable_cost
 
         # Collision avoidance constraint (soft)
 
+        for j in range(i + 1, self.sim.N_uav):
+            for k in range(self.sim.N_h):
+                d = opt_variables.x[i][3:6, k] - opt_variables.x[j][3:6, k]
+                opti.subject_to(ca.dot(d, d) >= self.lim.d_min**2)
+
+    def add_payload_tracking_objective(self, opti: ca.Opti, opt_variables: OptiVariables) -> None:
+
+        cost = ca.sumsqr(opt_variables.payload_pos - self.ref)
+
+
+        # Cruise weights for UAV state terms.
+        W_gamma = 1.0   # flight-path angle penalty weight [rad²]
+        W_chi   = 1.0   # heading-rate penalty weight [dimensionless]
+
         for i in range(self.sim.N_uav):
-            for j in range(i + 1, self.sim.N_uav):
-                for k in range(1, N):
+            # Formation tracking: pull each UAV toward its designated offset from the
+            # payload. Without this, the optimizer is free to move drones anywhere as
+            # long as the cable-length constraint is satisfied, causing curved paths.
 
-                    d = opt_variables.x[i][3:6, k] - opt_variables.x[j][3:6, k]
+            # Level flight: penalise non-zero flight-path angle (gamma).
+            # Keep each UAV approximately level during cruise
+            cost += W_gamma * ca.sumsqr(x[i][1, :])
 
-                    opti.subject_to(
-                        ca.dot(d, d) >= self.lim.d_min**2
-                    )
-    
-    def add_payload_tracking_objective(self, opti: ca.Opti, payload_pos: ca.MX) -> None:
+            # Heading-rate penalty: penalise chi changes between consecutive nodes to
+            # suppress heading oscillations. sin(Δchi) handles ±π wrap-around; for
+            # the small per-step changes expected in cruise sin(Δchi) ≈ Δchi.
+            dchi = ca.sin(x[i][2, 1:] - x[i][2, :-1])
+            cost += W_chi * ca.sumsqr(dchi)
 
-        tracking = ca.sumsqr(payload_pos - self.ref)
-
-        cable = getattr(self, "_cable_cost", 0)
-
-        cost = tracking + cable
-
+        # Control-rate penalty: discourage sharp input gradients between nodes. The
+        # three channels (thrust, alpha, bank) live on very different scales, so each
+        # rate is normalized by its admissible range before being weighted, making
+        # W_du a single dimensionless knob traded against tracking error.
+        W_du = 1e-4
+        du_scale = ca.vertcat(self.lim.T_max - self.lim.T_min,
+                              self.lim.alpha_max - self.lim.alpha_min,
+                              2 * self.lim.mu_max)
+        for i in range(self.sim.N_uav):
+            du = (opt_variables.u[i][:, 1:] - opt_variables.u[i][:, :-1]) / du_scale
+            cost += W_du * ca.sumsqr(du)
         opti.minimize(cost)
 
     def custom_constraint_placeholder(self, opti: ca.Opti) -> None:
