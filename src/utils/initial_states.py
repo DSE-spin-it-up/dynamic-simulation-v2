@@ -1,5 +1,7 @@
 import numpy as np
 
+from src.classes import payload
+
 from .default_params import DEFAULT_PARAMS, VehicleParams, StateLimits
 
 
@@ -17,11 +19,11 @@ def get_initial_states(
     """
     angles = np.linspace(0, 2 * np.pi, num_drones, endpoint=False)
 
-    # 1. Position Setup: Coplanar with the payload (same altitude)
-    drone_z = payload_pos[2] 
+    # 1. Position Setup: at distance of one cable legth in a circle at an angle of 45 deg
+    drone_z = payload_pos[2] + DEFAULT_PARAMS["L0"] * np.cos(np.deg2rad(45.0))  # Place drones at a height that gives a 45 deg cable angle
     drone_positions = np.column_stack([
-        payload_pos[0] + R * np.cos(angles),
-        payload_pos[1] + R * np.sin(angles),
+        payload_pos[0] + R * np.cos(angles) * np.cos(np.deg2rad(45.0)),  # Apply the 45 deg angle to the horizontal component
+        payload_pos[1] + R * np.sin(angles) * np.cos(np.deg2rad(45.0)),  # Apply the 45 deg angle to the horizontal component
         np.full(num_drones, drone_z),
     ])
 

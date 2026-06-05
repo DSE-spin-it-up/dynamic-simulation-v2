@@ -41,8 +41,8 @@ DEFAULT_PARAMS: dict = {
     "dt":      0.01,    # output time-step (not the ODE step)
 
     # Optimiser
-    "opti_N_h": 40,   # number of time steps in the trajectory optimization horizon
-    "opti_N_apply": 10, # number of time steps to apply before re-optimizing
+    "opti_N_h": 55,   # number of time steps in the trajectory optimization horizon
+    "opti_N_apply": 5, # number of time steps to apply before re-optimizing
     "opti_dt": 0.01,    # time step between optimization points (s)
     "Opti_max_iter": 1000,   # maximum iterations for the optimizer
 
@@ -143,3 +143,30 @@ class OptiVariables:
     Tc:          list   # per-UAV cable tension (1, N)
     payload_pos: ca.MX  # payload position (3, N)
     payload_vel: ca.MX  # payload velocity (3, N)
+
+@dataclass
+class CostWeights:
+    """Constant cost weights applied uniformly over the whole trajectory.
+
+    All keys are scalars except the per-control rate weight ``W_du``, stored as a
+    ``(3, 1)`` column ([T, alpha, mu]) so it broadcasts against the CasADi cost
+    expressions in ``build_nlp``.
+    """
+    W_track:  float
+    W_du:     np.ndarray   # (3, 1) per-control [T, alpha, mu] rate
+    W_dTc:    float        # cable-tension rate
+    W_dgamma: float        # flight-path-angle rate
+    W_dchi:   float        # heading rate
+    W_dV:     float        # airspeed rate
+    W_T:      float        # thrust magnitude
+    W_form:   float        # formation anchor (pull UAVs toward cruise offsets)
+
+@dataclass
+class Config:
+    """Everything needed to set up and solve a run"""
+    sim:         SimParams
+    veh:         VehicleParams
+    lim:         StateLimits
+    maneuver:    str            # name resolved against utils.maneuvers.MANEUVERS
+    common:      dict           # params common to every maneuver (altitude, speed, ...)
+    weights:     dict           # maneuver name -> partial weight dict (plus "default")

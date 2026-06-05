@@ -1,0 +1,138 @@
+# ── Trajectory planner configuration ─────────────────────────────────────────
+# Edit this file instead of the Python source. Loaded by config.load_config and
+# consumed in trajectory_planning.
+
+# Which maneuver to fly. One of the names in utils.maneuvers.MANEUVERS:
+#   cruise, climb, transition, transition_back, vertical_descent,
+#   climb_then_cruise, cruise_then_turn, climb_then_cruise_then_turn,
+#   cruise_then_Sturn, circular_orbit
+# Each maneuver decides which mission phases it flies through and when; the
+# weights for those phases come from the `weights` block below.
+maneuver: climb
+
+# ── Cost weights per maneuver ────────────────────────────────────────────────
+# One block per maneuver (names match utils.maneuvers.MANEUVERS). `default` is
+# the baseline; each maneuver lists only the weights it changes (the rest fall
+# back to `default`). The active `maneuver` above selects which block applies;
+# the chosen weights are constant over the whole trajectory.
+#
+#   W_track  payload position tracking (primary objective)
+#   W_du     per-control rate penalty [thrust T, angle of attack alpha, bank mu]
+#   W_dTc    cable-tension rate
+#   W_dgamma flight-path-angle rate      W_dchi  heading rate
+#   W_dV     airspeed rate               W_T     thrust magnitude
+#   W_form   formation anchor: soft-pulls each UAV toward the equal-tension cruise
+#            offset so the load is shared almost equally. Gated per node by the
+#            maneuver's phases (off during spin_up/climb, ramped on through a
+#            transition, full at cruise/turn), so it never fights the climb spin.
+#            0 disables it. Try ~5; raise for a tighter formation.
+weights:
+  default:
+    W_track:  1.0
+    W_du:     [1.0e-3, 1.0e-3, 1.0e-3]
+    W_dTc:    1e-4
+    W_dgamma: 1.0e-3
+    W_dchi:   1.0e-3
+    W_dV:     1.0e-3
+    W_T:      0.0
+    W_form:   0.0
+
+  climb:
+    W_track:  1.0
+    W_du:     [1.0e-3, 1.0e-3, 1.0e-3]
+    W_dTc:    1e-4
+    W_dgamma: 1.0e-3
+    W_dchi:   1.0e-3
+    W_dV:     1.0e-3
+    W_T:      0.0
+    W_form:   0.0
+
+  transition:
+    W_track:  1.0
+    W_du:     [1.0e-3, 1.0e-3, 1.0e-3]
+    W_dTc:    1e-4
+    W_dgamma: 1.0e-3
+    W_dchi:   1.0e-3
+    W_dV:     1.0e-3
+    W_T:      0.0
+    W_form:   1e-3
+
+  cruise:
+    W_track:  1.0
+    W_du:     [1.0e-3, 1.0e-3, 1.0e-3]
+    W_dTc:    1e-4
+    W_dgamma: 1.0e-3
+    W_dchi:   1.0e-3
+    W_dV:     1.0e-3
+    W_T:      0.0
+    W_form:   0.0
+
+  transition_back:
+    W_track:  1.0
+    W_du:     [1.0e-3, 1.0e-3, 1.0e-3]
+    W_dTc:    1e-4
+    W_dgamma: 1.0e-3
+    W_dchi:   1.0e-3
+    W_dV:     1.0e-3
+    W_T:      0.0
+    W_form:   0.0
+
+  vertical_descent:
+    W_track:  1.0
+    W_du:     [1.0e-3, 1.0e-3, 1.0e-3]
+    W_dTc:    1e-4
+    W_dgamma: 1.0e-3
+    W_dchi:   1.0e-3
+    W_dV:     1.0e-3
+    W_T:      0.0
+    W_form:   0.0
+
+  climb_then_cruise:
+    W_track:  1.0
+    W_du:     [1.0e-3, 1.0e-3, 1.0e-3]
+    W_dTc:    1e-4
+    W_dgamma: 1.0e-3
+    W_dchi:   1.0e-3
+    W_dV:     1.0e-3
+    W_T:      0.0
+    W_form:   5.0
+
+  cruise_then_turn:
+    W_track:  1.0
+    W_du:     [1.0e-3, 1.0e-3, 1.0e-3]
+    W_dTc:    1e-4
+    W_dgamma: 1.0e-3
+    W_dchi:   1.0e-3
+    W_dV:     1.0e-3
+    W_T:      0.0
+    W_form:   5.0
+
+  climb_then_cruise_then_turn:
+    W_track:  1.0
+    W_du:     [1.0e-3, 1.0e-3, 1.0e-3]
+    W_dTc:    1e-4
+    W_dgamma: 1.0e-3
+    W_dchi:   1.0e-3
+    W_dV:     1.0e-3
+    W_T:      0.0
+    W_form:   5.0
+
+  cruise_then_Sturn:
+    W_track:  1.0
+    W_du:     [1.0e-3, 1.0e-3, 1.0e-3]
+    W_dTc:    1e-4
+    W_dgamma: 1.0e-3
+    W_dchi:   1.0e-3
+    W_dV:     1.0e-3
+    W_T:      0.0
+    W_form:   5.0
+
+  circular_orbit:
+    W_track:  1.0
+    W_du:     [1.0e-3, 1.0e-3, 1.0e-3]
+    W_dTc:    1e-4
+    W_dgamma: 1.0e-3
+    W_dchi:   1.0e-3
+    W_dV:     1.0e-3
+    W_T:      0.0
+    W_form:   5.0
