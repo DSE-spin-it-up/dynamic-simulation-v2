@@ -96,12 +96,52 @@ def compute_gravity_force(mass: float) -> np.ndarray:
     return np.array([0, 0, -mass * 9.81])
 
 def compute_drone_aero_forces(drone: Drone) -> np.ndarray:
-    """Placeholder for drone aerodynamic forces. Currently returns zero."""
-    return np.zeros(3)
+    """
+    Computes aerodynamic lift and drag forces acting on the drone.
+    Ensures correct quadratic velocity scaling and proper vector directions.
+    """
+    # Extract velocity vector
+    v_vec = np.asarray(drone.v)
+    v_norm = np.linalg.norm(v_vec)
+
+    # Handle stationary/hover case to avoid division by zero (NaNs)
+    if v_norm < 1e-6:
+        return np.zeros(3)
+
+    # 1. Compute unit vector of velocity (direction of travel)
+    v_unit = v_vec / v_norm
+
+    # 2. Compute Drag Force (acts directly opposite to velocity direction)
+    # Formula: D = -0.5 * rho * S * CD0 * ||v||^2 * v_unit
+    D_mag = 0.5 * DEFAULT_PARAMS["rho"] * DEFAULT_PARAMS["S"] * DEFAULT_PARAMS["CD0"] * (v_norm**2)
+    D = -D_mag * v_unit
+
+    # 3. Compute Lift Force (acts perpendicular to velocity, in the vertical plane)
+    # We find a unit vector perpendicular to velocity that points generally upwards
+    vertical_dir = np.array([0.0, 0.0, 1.0])
+    
+    # Project vertical direction onto the plane perpendicular to v_unit
+    lift_dir = vertical_dir - np.dot(vertical_dir, v_unit) * v_unit
+    lift_dir_norm = np.linalg.norm(lift_dir)
+
+    if lift_dir_norm > 1e-6:
+        lift_unit = lift_dir / lift_dir_norm
+    else:
+        # Fallback if flying perfectly vertical (lift acts forward/backward depending on pitching, 
+        # default to straight up or zero if pure vertical climbing)
+        lift_unit = np.array([0.0, 0.0, 1.0])
+
+    # Formula: L = 0.5 * rho * S * CLa * ||v||^2 * lift_unit
+    L_mag = 0.5 * DEFAULT_PARAMS["rho"] * DEFAULT_PARAMS["S"] * DEFAULT_PARAMS["CLa"] * (v_norm**2)
+    L = L_mag * lift_unit
+
+    # Total aerodynamic force vector
+    return D + L
+
 
 def compute_payload_aero_forces(payload: Payload) -> np.ndarray:
     """Placeholder for payload aerodynamic forces. Currently returns zero."""
-    return np.zeros(3)
+    return DEFAULT_PARAMS["CD0_payload"] * 0.5 * DEFAULT_PARAMS["rho"] * DEFAULT_PARAMS["S_payload"] * np.array([0, 0, -1]) * np.linalg.norm(payload.v) * payload.v**2
 
 def compute_forces(drones: list[Drone], cables: list[Cable], payload: Payload) -> dict[int, dict[str, np.ndarray]]:
     """

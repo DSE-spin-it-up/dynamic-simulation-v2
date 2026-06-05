@@ -16,6 +16,8 @@ DEFAULT_PARAMS: dict = {
 
     # Payload properties
     "m_payload": 60.0,         # payload mass, kg
+    "pay_CD0": 1.07,           # payload drag coefficient
+    "pay_S": 0.31,             # payload reference area for drag, m^2
 
     # Cable properties
     "L0": 12.5,          # rest length, m 
@@ -26,22 +28,22 @@ DEFAULT_PARAMS: dict = {
     "R":             12,   # nominal orbit radius, m
 
     # Controller
-    "prop_gain": 50.0,   # proportional gain for radial control
-    "deriv_gain": 2.0,   # derivative gain for radial control
-    "int_gain": 2,   # integral gain for radial control
+    "prop_gain": 500.0,   # proportional gain for radial control
+    "deriv_gain": 20.0,   # derivative gain for radial control
+    "int_gain": 100,   # integral gain for radial control
 
-    "z_target":  100.0,   # target drone height ABOVE payload, m
+    "z_target":  0.0,   # target drone height ABOVE payload, m
 
 
     # Integration
     "t_start": 0,
-    "t_end":   40.0,
+    "t_end":   10.0,
     "dt":      0.01,    # output time-step (not the ODE step)
 
     # Optimiser
-    "opti_N_h": 20,   # number of time steps in the trajectory optimization horizon
-    "opti_N_apply": 5, # number of time steps to apply before re-optimizing
-    "opti_dt": 0.1,    # time step between optimization points (s)
+    "opti_N_h": 40,   # number of time steps in the trajectory optimization horizon
+    "opti_N_apply": 10, # number of time steps to apply before re-optimizing
+    "opti_dt": 0.01,    # time step between optimization points (s)
     "Opti_max_iter": 1000,   # maximum iterations for the optimizer
 
     # Physical limits
@@ -63,6 +65,24 @@ DEFAULT_PARAMS: dict = {
     "CD0": 0.02,
     "CD0_payload": 1.07,
     "S_payload": 0.31,   # reference area for payload drag, m^2
+    "climb_rate": 1,    # max climb rate for reference trajectory, m/s
+
+    "cable_tol": 0.1,     # allowed half-band on the chord length, m
+
+    # Hardware limits
+    "V_min": 14.0,     # minimum speed, m/s
+    "V_max": 30.0,     # maximum speed, m/s
+    "gam_max": np.deg2rad(45.0),   # maximum flight path angle, rad
+    "alpha_min": np.deg2rad(-15.0),   # minimum angle
+    "alpha_max": np.deg2rad(10.0),    # maximum angle of attack, rad
+    "mu_max": np.deg2rad(35.0),       # maximum sideslip angle, rad
+    "d_min": 6.0,    # minimum distance between drones, m
+    "V_cruise": 20.0,  # cruise speed, m/s
+    "Tc_min": 0.0,    # minimum cable tension, N
+    "Tc_max": 750.0,  # maximum cable tension, N
+    "T_max": 180.0,  # maximum thrust per drone, N
+    "T_min": 0.0,    # minimum thrust, N
+    "P_max": 2700.0,  # maximum propulsive power per UAV, W
 
 }
 
@@ -94,25 +114,26 @@ class VehicleParams:
     # Payload / cable
     m_L:       float = DEFAULT_PARAMS["m_payload"]    # payload mass [kg]
     cable_len: float = DEFAULT_PARAMS["L0"]    # cable length L_c [m] (nominal)
-    cable_tol: float = 0.1     # allowed half-band on the chord length [m]
+    cable_tol: float = DEFAULT_PARAMS["cable_tol"]     # allowed half-band on the chord length [m]
 
 
 @dataclass
 class StateLimits:
     """State / control limits."""
-    V_min:     float = 14.0
-    V_max:     float = 30.0
-    gam_max:   float = np.deg2rad(45.0)
-    T_min:     float = 0.0
-    T_max:     float = DEFAULT_PARAMS["max_thrust"]
-    P_max:     float = 2700  # max propulsive power per UAV [W]
-    alpha_min: float = np.deg2rad(-15.0)
-    alpha_max: float = np.deg2rad(10.0)
-    mu_max:    float = np.deg2rad(35.0)
-    d_min:     float = DEFAULT_PARAMS["min_distance"]
-    V_cruise:  float = 20.0
-    Tc_min:    float = 0.0
-    Tc_max:    float = 750.0  # max cable tension [N]
+    V_min:     float = DEFAULT_PARAMS["V_min"]
+    V_max:     float = DEFAULT_PARAMS["V_max"]
+    gam_max:   float = DEFAULT_PARAMS["gam_max"]
+    T_min:     float = DEFAULT_PARAMS["T_min"]
+    T_max:     float = DEFAULT_PARAMS["T_max"]
+    P_max:     float = DEFAULT_PARAMS["P_max"]  # max propulsive power per UAV [W]
+    alpha_min: float = DEFAULT_PARAMS["alpha_min"]
+    alpha_max: float = DEFAULT_PARAMS["alpha_max"]
+    mu_max:    float = DEFAULT_PARAMS["mu_max"]
+    d_min:     float = DEFAULT_PARAMS["d_min"]
+    V_cruise:  float = DEFAULT_PARAMS["V_cruise"]
+    Tc_min:    float = DEFAULT_PARAMS["Tc_min"]
+    Tc_max:    float = DEFAULT_PARAMS["Tc_max"]  # max cable tension [N]
+    climb_rate: float = DEFAULT_PARAMS["climb_rate"]  # max climb rate for reference trajectory, m/s
 
 @dataclass
 class OptiVariables:

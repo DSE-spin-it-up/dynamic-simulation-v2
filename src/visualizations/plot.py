@@ -4,6 +4,7 @@ import matplotlib.animation as animation
 from matplotlib.widgets import Slider
 from typing import cast, Any
 
+from src.utils.default_params import DEFAULT_PARAMS
 
 def plot_trajectories(history):
     """
@@ -261,21 +262,15 @@ def animate_trajectories_3d(
     params: dict = {},
 ):
     """
-    Faster 3D animation version.
-
-    Main optimisations
-    ------------------
-    - No dynamic axis updates
-    - No plot_surface()
-    - Shorter trails
-    - Larger stride
-    - No transparency
-    - Fewer redraw-heavy operations
+    Faster 3D animation version. Only plots the executed plan up to opti_N_apply nodes.
     """
-
     from matplotlib import animation
     import matplotlib.pyplot as plt
     import numpy as np
+    from src.utils.default_params import DEFAULT_PARAMS
+
+    # Fetch the application window size from parameters
+    n_apply = DEFAULT_PARAMS.get("opti_N_apply", 5)  # Fallback to 5 if not found
 
     n_drones = len(history["drones"])
     colors = plt.get_cmap('tab10')(np.linspace(0, 0.9, n_drones))
@@ -283,6 +278,7 @@ def animate_trajectories_3d(
     drones_xyz = [history["drones"][i][:, :3] for i in range(n_drones)]
     payload_xyz = history[-1][:, :3]
 
+    payload_ref = np.array(history["payload_ref"]) if "payload_ref" in history else None
     projected_trajectories = [history["projected_trajectories"][i] for i in range(n_drones)]
 
     has_phases = "phase" in history
@@ -290,7 +286,6 @@ def animate_trajectories_3d(
     # ------------------------------------------------------------------
     # Axis limits
     # ------------------------------------------------------------------
-
     all_pos = np.vstack(drones_xyz + [payload_xyz])
 
     x_min, x_max = np.min(all_pos[:, 0]), np.max(all_pos[:, 0])
@@ -302,7 +297,6 @@ def animate_trajectories_3d(
     # ------------------------------------------------------------------
     # Figure
     # ------------------------------------------------------------------
-
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection="3d")
 
@@ -324,102 +318,53 @@ def animate_trajectories_3d(
     ax.set_xlabel("X [m]")
     ax.set_ylabel("Y [m]")
     ax.set_zlabel("Z [m]")
-
     ax.set_title("Spin it up!")
-
-    # Keep grid simple
     ax.grid(True)
 
     # ------------------------------------------------------------------
-    # Optional reference orbit
+    # Payload reference trajectory
     # ------------------------------------------------------------------
-
-    if params:
-        R_ref = params.get("R", None)
-        z_hover = params.get("z_hover", None)
-
-        if R_ref is not None and z_hover is not None:
-            theta = np.linspace(0, 2 * np.pi, 100)
-
-            ax.plot(
-                R_ref * np.cos(theta),
-                R_ref * np.sin(theta),
-                np.full_like(theta, z_hover),
-                "--",
-                linewidth=1.0,
-                color="gray",
-            )
+    if payload_ref is not None and len(payload_ref) > 0:
+        ax.plot(
+            payload_ref[:, 0],
+            payload_ref[:, 1],
+            payload_ref[:, 2],
+            "k--",
+            linewidth=1.0,
+            label="Payload reference",
+        )
 
     # ------------------------------------------------------------------
     # Animated artists
     # ------------------------------------------------------------------
-
     predicted_trajectories_lines = []
     drone_trails = []
     drone_markers = []
     cable_lines = []
 
     for i, color in enumerate(colors):
-
         predicted_traj_line = ax.plot(
-            [],
-            [],
-            [],
+            [], [], [],
             "--",
             linewidth=1.0,
             color=color,
             alpha=0.5,
-            label=f"Drone {i} planned",
+            label=f"Drone {i} executed plan",
         )[0]
 
-        trail = ax.plot(
-            [],
-            [],
-            [],
-            linewidth=1.0,
-            color=color,
-            antialiased=False,
-        )[0]
-
-        marker = ax.plot(
-            [],
-            [],
-            [],
-            "o",
-            color=color,
-            markersize=6,
-            antialiased=False,
-            label=f"Drone {i}",
-        )[0]
-
-        cable = ax.plot(
-            [],
-            [],
-            [],
-            "-",
-            linewidth=1.0,
-            color=color,
-            antialiased=False,
-        )[0]
+        trail = ax.plot([], [], [], linewidth=1.0, color=color, antialiased=False)[0]
+        marker = ax.plot([], [], [], "o", color=color, markersize=6, antialiased=False, label=f"Drone {i}")[0]
+        cable = ax.plot([], [], [], "-", linewidth=1.0, color=color, antialiased=False)[0]
 
         predicted_trajectories_lines.append(predicted_traj_line)
         drone_trails.append(trail)
         drone_markers.append(marker)
         cable_lines.append(cable)
 
-    payload_marker = ax.plot(
-        [],
-        [],
-        [],
-        "ks",
-        markersize=8,
-        label="Payload",
-    )[0]
+    payload_marker = ax.plot([], [], [], "ks", markersize=8, label="Payload")[0]
 
     time_text = ax.text2D(
-        0.02,
-        0.95,
-        "",
+        0.02, 0.95, "",
         transform=ax.transAxes,
         fontsize=10,
         family="monospace",
@@ -430,19 +375,14 @@ def animate_trajectories_3d(
     # ------------------------------------------------------------------
     # Animation update
     # ------------------------------------------------------------------
-
     n_frames = (len(history["t"]) - 1) // stride + 1
 
     def _update(frame):
-
         k = min(frame * stride, len(history["t"]) - 1)
-
         trail_start = max(0, k - trail_length)
-
         px, py, pz = payload_xyz[k]
 
         for i in range(n_drones):
-
             xyz = drones_xyz[i]
 
             xs = xyz[trail_start : k + 1, 0]
@@ -458,18 +398,15 @@ def animate_trajectories_3d(
             cast(Any, drone_markers[i]).set_3d_properties([xyz[k, 2]])
 
             # Cable
-            cable_lines[i].set_data(
-                [px, xyz[k, 0]],
-                [py, xyz[k, 1]],
-            )
+            cable_lines[i].set_data([px, xyz[k, 0]], [py, xyz[k, 1]])
+            cast(Any, cable_lines[i]).set_3d_properties([pz, xyz[k, 2]])
 
-            cast(Any, cable_lines[i]).set_3d_properties(
-            [pz, xyz[k, 2]])
-
-            pred_trajs = projected_trajectories[i]  # list of all chunks
-            all_x = np.concatenate([t[3, :] for t in pred_trajs])
-            all_y = np.concatenate([t[4, :] for t in pred_trajs])
-            all_z = np.concatenate([t[5, :] for t in pred_trajs])
+            # --- Sliced Prediction Paths ---
+            # Slice each optimization horizon matrix up to n_apply along its time axis (axis 1)
+            pred_trajs = projected_trajectories[i]
+            all_x = np.concatenate([t[3, :n_apply] for t in pred_trajs])
+            all_y = np.concatenate([t[4, :n_apply] for t in pred_trajs])
+            all_z = np.concatenate([t[5, :n_apply] for t in pred_trajs])
 
             predicted_trajectories_lines[i].set_data_3d(all_x, all_y, all_z)
 
@@ -479,10 +416,8 @@ def animate_trajectories_3d(
 
         # Time label
         label = f"t = {history['t'][k]:6.2f} s"
-
         if has_phases:
             label += f" | {history['phase'][k]}"
-
         time_text.set_text(label)
 
         return (
@@ -493,8 +428,6 @@ def animate_trajectories_3d(
             + [payload_marker, time_text]
         )
 
-
-    from src.utils.default_params import DEFAULT_PARAMS
     dt = DEFAULT_PARAMS.get("dt", 0.01)
     interval_ms = max(1, int(round(stride * dt * 1000)))
 
@@ -503,7 +436,7 @@ def animate_trajectories_3d(
         _update,
         frames=n_frames,
         interval=interval_ms,
-        blit=False,  # othersiwe the computation time goes crazy
+        blit=False,
     )
 
     plt.tight_layout()

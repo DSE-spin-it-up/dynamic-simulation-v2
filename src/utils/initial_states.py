@@ -9,34 +9,33 @@ def get_initial_states(
     L0: float = DEFAULT_PARAMS["L0"],
     payload_pos: np.ndarray = np.zeros(3),
     z_target: float = DEFAULT_PARAMS["z_target"],
+    v_tangent_mag: float = 20.0,  # Explicit magnitude configuration
 ) -> dict:
     """
-    Drones are placed on a cone above the payload such that:
-      - horizontal radius = R
-      - cable length = L0 exactly
-      - drone height above payload = sqrt(L0^2 - R^2)
-
-    Raises if R >= L0 (geometry impossible).
+    Places drones in a flat circle of radius R around the payload's XY position.
+    Velocities are strictly tangential (counter-clockwise) to their position vectors.
     """
-    if R >= L0:
-        raise ValueError(f"Cable length L0={L0} must be greater than formation radius R={R}. "
-                         f"Currently R={R} >= L0={L0}, so no valid vertical offset exists.")
-
     angles = np.linspace(0, 2 * np.pi, num_drones, endpoint=False)
 
-    # Height offset above payload such that |drone - payload| == L0 exactly
-    dz = np.sqrt(L0**2 - R**2)
-    drone_z = payload_pos[2] + dz  # absolute altitude
-
+    # 1. Position Setup: Coplanar with the payload (same altitude)
+    drone_z = payload_pos[2] 
     drone_positions = np.column_stack([
-        payload_pos[0] + R * np.cos(angles),  # offset from payload, not world origin
+        payload_pos[0] + R * np.cos(angles),
         payload_pos[1] + R * np.sin(angles),
         np.full(num_drones, drone_z),
     ])
 
-    drone_velocities = np.tile([20.0, 0.0, 0.0], (num_drones, 1))
+    # 2. Velocity Setup: Perfectly perpendicular to the position vector
+    # Drone at 0 rad flies UP (+Y). Drone at pi/2 rad flies LEFT (-X).
+    drone_velocities = np.column_stack([
+        -v_tangent_mag * np.sin(angles),
+         v_tangent_mag * np.cos(angles),
+         np.zeros(num_drones)  # No vertical velocity component at t=0
+    ])
+
     payload_velocity = np.zeros(3)
 
+    # 3. Package into state dict
     states = {}
     for i in range(num_drones):
         states[i] = {
@@ -44,6 +43,7 @@ def get_initial_states(
             "velocity": drone_velocities[i],
         }
 
+    # Reserved ID for payload remains -1
     states[-1] = {
         "position": payload_pos.copy(),
         "velocity": payload_velocity,

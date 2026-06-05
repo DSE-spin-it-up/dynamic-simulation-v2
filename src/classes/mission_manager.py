@@ -61,7 +61,7 @@ class MissionManager:
       → GROUND_POWER_OFF
     """
 
-    def __init__(self, params: dict = DEFAULT_PARAMS, mission_params: MissionParams = None):
+    def __init__(self, params: dict = DEFAULT_PARAMS, mission_params: MissionParams = MissionParams()):
         self.params = params
         self.phase = MissionPhase.TAKE_OFF
         self.mission_params = mission_params or MissionParams()
@@ -79,7 +79,7 @@ class MissionManager:
         self.trajectory_planner = TrajectoryPlanner()
 
         # Tracking state
-        self._cruise_start_xy: np.ndarray = None
+        self._cruise_start_xy: np.ndarray = None # type: ignore
         # List of (t, payload_xy) pairs for payload motion detection
         self._payload_pos_history: list = []
 
@@ -135,7 +135,7 @@ class MissionManager:
 
         # Record cruise start position on phase entry
         if prev_phase != MissionPhase.CRUISE and self.phase == MissionPhase.CRUISE:
-            self._cruise_start_xy = inputs.payload.position[:2].copy()
+            self._cruise_start_xy = inputs.payload.position[:2].copy() # type: ignore
 
     # ------------------------------------------------------------------
     # Transition conditions
@@ -154,7 +154,7 @@ class MissionManager:
 
     def _spinup_complete(self, inputs: MissionInputs) -> bool:
         """Payload reached target cruise altitude."""
-        return inputs.payload.z >= self.mission_params.target_payload_altitude
+        return inputs.payload.z >= self.mission_params.target_payload_altitude # type: ignore
 
     def _ready_for_cruise(self, inputs: MissionInputs) -> bool:
         """Drone formation heading aligned with required payload heading within tolerance.
@@ -164,10 +164,10 @@ class MissionManager:
         flying in the required direction.
         """
         payload = inputs.payload
-        speed_xy = math.hypot(payload.v[0], payload.v[1])
+        speed_xy = math.hypot(payload.v[0], payload.v[1]) #type: ignore
         if speed_xy < 0.01:
             return False
-        actual_heading = math.atan2(payload.v[1], payload.v[0])
+        actual_heading = math.atan2(payload.v[1], payload.v[0]) #type: ignore
         angular_error = actual_heading - self.mission_params.reference_heading
         # Wrap to [-pi, pi]
         angular_error = (angular_error + math.pi) % (2 * math.pi) - math.pi
@@ -179,24 +179,24 @@ class MissionManager:
             return False
         heading = self.mission_params.reference_heading
         ref_dir = np.array([math.cos(heading), math.sin(heading)])
-        displacement = inputs.payload.position[:2] - self._cruise_start_xy
+        displacement = inputs.payload.position[:2] - self._cruise_start_xy # type: ignore
         return float(np.dot(displacement, ref_dir)) >= self.mission_params.cruise_range
 
-    def _ready_to_spin_down(self, inputs: MissionInputs) -> bool:
+    def _ready_to_spin_down(self, inputs: MissionInputs) -> np.bool_:
         """Payload hasn't moved more than motion_threshold_m in the last motion_threshold_s seconds.
 
         Both thresholds are TBD and marked as placeholders in MissionParams.
         """
         history = self._payload_pos_history
         if len(history) < 2:
-            return False
+            return np.bool_(False)
         ref_pos = history[0][1]
         max_displacement = max(np.linalg.norm(p - ref_pos) for (_, p) in history)
-        return max_displacement < self.mission_params.motion_threshold_m
+        return np.bool_(max_displacement < self.mission_params.motion_threshold_m)
 
     def _spindown_complete(self, inputs: MissionInputs) -> bool:
         """Payload reached ground level (5 cm tolerance)."""
-        return inputs.payload.z <= 0.05
+        return inputs.payload.z <= 0.05 # type: ignore
 
     def _omega_zero(self, inputs: MissionInputs) -> bool:
         """All drone angular velocities around the payload are effectively zero."""

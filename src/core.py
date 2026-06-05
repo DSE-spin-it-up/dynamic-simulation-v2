@@ -6,20 +6,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.utils.initialise_objects import initialise_objects
 from src.utils.default_params import DEFAULT_PARAMS, VehicleParams, StateLimits
-from src.utils.initial_states import get_cruise_initial_states
+from src.utils.initial_states import get_cruise_initial_states, get_initial_states
 from src.simulation.physics import compute_net_forces, compute_forces, update_state
 from src.visualizations.plot import animate_trajectories_3d
 
 
 def main():
-    initial_states = get_cruise_initial_states(
-        veh=VehicleParams(),
-        lim=StateLimits(),
-        num_drones=DEFAULT_PARAMS["n_drones"],
-        payload_pos=np.array([0.0, 0.0, 100.0]),
-        heading=np.pi / 2,
-        lateral_offset=6.0,
-    )
+    initial_states = get_initial_states()
     drones, payload, cables, trajectory_planner, mission_planner = initialise_objects(initial_states)
 
     # Integration term for PID controller
@@ -28,10 +21,11 @@ def main():
     # Main simulation loop
     history = {"t": [], "drones": [[] for _ in drones], -1: [], "projected_trajectories": [[]for _ in drones]}
     history["plan_time"] = []
+    history["payload_ref"] = []
     t = DEFAULT_PARAMS["t_start"]
-    waypoints_hold = DEFAULT_PARAMS["opti_N_apply"] * (DEFAULT_PARAMS["opti_dt"] / DEFAULT_PARAMS["dt"])  # number of time steps to hold each planned waypoint
+    n_loops_hold_waypoint = DEFAULT_PARAMS["opti_N_apply"] * (DEFAULT_PARAMS["opti_dt"] / DEFAULT_PARAMS["dt"])  # number of time steps to hold each planned waypoint
 
-    n_sim_loops = 0 # counter to track how many time steps have been taken since the last trajectory plan, used to determine when to update the planned trajectory
+    n_sim_loops = 0 # counter to track how many time steps have been taken, used to determine when to update the planned trajectory
     planned_positions = None
 
     while t < DEFAULT_PARAMS["t_end"]:
@@ -45,8 +39,9 @@ def main():
         # ---------------------------------- MISSION PLANNING UPDATES ----------------------------------------
 
         mission_command = mission_planner.update(t, drones, payload, cables)
-        # Run the planner only after Ñthe previous trajectory has been used
-        if planned_positions is None or n_sim_loops % waypoints_hold == 0:
+
+        # Run the planner after the previous trajectory N_apply has been used
+        if planned_positions is None or n_sim_loops % (n_loops_hold_waypoint * DEFAULT_PARAMS["opti_N_apply"]) == 0:
             planned_positions, planned_time = trajectory_planner.calculate_traj_step(
                 t,
                 drones=drones,
@@ -59,8 +54,7 @@ def main():
             for drone_n in range(DEFAULT_PARAMS["n_drones"]):
                 history["projected_trajectories"][drone_n].append(planned_positions[drone_n])
             history["plan_time"].append(t)
-            print(f"First projected drone position in new plan at t={t:.2f}: {planned_positions[0]}")
-            print(f"drone position at t={t:.2f}: {drones[0].position}")
+            history["payload_ref"].append(trajectory_planner.ref_window)
 
         # ---------------------------------- CONTROL UPDATES ----------------------------------------
 
