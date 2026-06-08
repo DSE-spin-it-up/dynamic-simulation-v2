@@ -14,8 +14,8 @@ class Payload():
         """
         self.id = id
         self.mass = mass
-        self.position = initial_position
-        self.v = initial_velocity
+        self.position = np.array(initial_position, dtype=float, copy=True)
+        self.v = np.array(initial_velocity if initial_velocity is not None else [0, 0, 0], dtype=float, copy=True)
         
     # ----------------------------------------------------------------------------------
     # Ignore this, it's just to print the payload object

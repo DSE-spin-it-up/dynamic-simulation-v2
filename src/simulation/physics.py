@@ -153,5 +153,5 @@ def update_state(object: Drone | Payload, net_force: np.ndarray) -> None:
     Update the state of a drone or payload based on the net force acting on it.
     """
     acceleration = net_force / object.mass
-    object.v += acceleration * DEFAULT_PARAMS["dt"]
-    object.position += object.v * DEFAULT_PARAMS["dt"]
+    object.v += acceleration * DEFAULT_PARAMS["simulation_dt"]
+    object.position += object.v * DEFAULT_PARAMS["simulation_dt"]
