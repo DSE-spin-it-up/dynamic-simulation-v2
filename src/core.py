@@ -9,7 +9,7 @@ from src.utils.default_params import DEFAULT_PARAMS
 from src.utils.initial_states import get_initial_states
 from src.utils.import_csv import load_drone_trajectories
 from src.simulation.physics import compute_net_forces, compute_forces, update_state
-from src.visualizations.plot import animate_trajectories_3d, plot_radius_vs_time
+from src.visualizations.plot import animate_trajectories_3d
 
 
 def main():
