@@ -6,54 +6,6 @@ from src.classes.drone import Drone
 from src.classes.payload import Payload
 from src.utils.default_params import DEFAULT_PARAMS
 
-
-def _pack_state(drones, payload):
-    parts = []
-    for drone in drones:
-        parts.append(drone.position)
-        parts.append(drone.v)
-    parts.append(payload.position)
-    parts.append(payload.v)
-    return np.concatenate(parts)
-
-
-def _unpack_state(state, drones, payload):
-    for i, drone in enumerate(drones):
-        base = i * 6
-        drone.position = state[base : base + 3].copy()
-        drone.v = state[base + 3 : base + 6].copy()
-    base = len(drones) * 6
-    payload.position = state[base : base + 3].copy()
-    payload.v = state[base + 3 : base + 6].copy()
-
-
-def _equations_of_motion(t, state, drones, payload, cables, g):
-    _unpack_state(state, drones, payload)
-
-    n = len(drones)
-    derivs = np.zeros(len(state))
-    F_payload = np.zeros(3)
-    g_vec = np.array([0.0, 0.0, -g])
-
-    for i, (drone, cable) in enumerate(zip(drones, cables)):
-        f_on_payload, f_on_drone = cable.force_vectors()
-        F_payload += f_on_payload
-
-        F_thrust = drone.controller.compute_thrust(drone, payload)
-        a_drone = (f_on_drone + F_thrust) / drone.mass + g_vec
-
-        base = i * 6
-        derivs[base : base + 3] = drone.v
-        derivs[base + 3 : base + 6] = a_drone
-
-    a_payload = F_payload / payload.mass + g_vec
-    base = n * 6
-    derivs[base : base + 3] = payload.v
-    derivs[base + 3 : base + 6] = a_payload
-
-    return derivs
-
-
 def simulate(drones, payload, cables, params):
     """
     Legacy simulation function using RK45 integration. This is currently not used in the main code, but is kept for reference and potential future use.
@@ -66,42 +18,97 @@ def simulate(drones, payload, cables, params):
         'drones' : list of (N_times x 6) arrays — [x, y, z, vx, vy, vz] per drone
         -1       : (N_times x 6) array — [x, y, z, vx, vy, vz] for payload
     """
-    y0 = _pack_state(drones, payload)
-    t_start = params["t_start"]
-    t_end = params["t_end"]
-    t_eval = np.linspace(t_start, t_end, int((t_end - t_start) / params["dt"]) + 1)
-    g = params.get("g", 0.0)
-
-    result = solve_ivp(
-        fun=lambda t, y: _equations_of_motion(t, y, drones, payload, cables, g),
-        t_span=(t_start, t_end),
-        y0=y0,
-        method="RK45",
-        t_eval=t_eval,
-        rtol=1e-6,
-        atol=1e-9,
-    )
-
-    _unpack_state(result.y[:, -1], drones, payload)
-
-    n = len(drones)
-    history = {"t": result.t, "drones": [], -1: result.y[n * 6 : n * 6 + 6, :].T}
-    for i in range(n):
-        history["drones"].append(result.y[i * 6 : i * 6 + 6, :].T)
-
-    return history
 
 def compute_gravity_force(mass: float) -> np.ndarray:
     """Compute gravitational force vector [0, 0, -mg]."""
     return np.array([0, 0, -mass * 9.81])
 
 def compute_drone_aero_forces(drone: Drone) -> np.ndarray:
-    """Placeholder for drone aerodynamic forces. Currently returns zero."""
-    return np.zeros(3)
+    """
+    Fixed-wing aerodynamic forces on the drone body.
+
+    Drag
+    ----
+        F_drag = -½ · ρ · Cd · A · |v|² · v_hat
+
+    Lift
+    ----
+    Dynamic pressure:
+            q = ½ · ρ · A · |v|²
+
+    Angle of attack α:
+            α = atan2(v · body_x, v · body_z)   [in the pitch plane]
+
+    Lift coefficient:
+            Cl = clip(Cl_alpha · (α - α0), -Cl_max, Cl_max)
+
+    Lift direction: perpendicular to velocity, starting straight "up"
+            L_dir = Rodrigues(v_hat, φ) · lift_up
+    """
+    speed = np.linalg.norm(drone.v)
+
+    # ── Drag ──────────────────────────────────────────────────────────
+    if speed < 1e-9:
+        return np.zeros(3)
+
+    v_hat = drone.v / speed
+    q_dyn = 0.5 * DEFAULT_PARAMS["rho_air"] * DEFAULT_PARAMS["drone_a_ref"] * speed**2
+
+    drag = -DEFAULT_PARAMS["drone_cd"] * q_dyn * v_hat
+
+    if not DEFAULT_PARAMS.get("use_aero_lift", False):
+        return drag
+
+    # ── Angle of attack ───────────────────────────────────────────────
+    # Project velocity onto body axes to get α in the pitch plane
+    body_x = drone.rotation.apply([1.0, 0.0, 0.0])   # forward axis
+    body_z = drone.body_z                              # up/thrust axis
+
+    v_body_x = np.dot(drone.v, body_x)                # forward component
+    v_body_z = np.dot(drone.v, body_z)                # vertical component
+
+    alpha = np.arctan2(v_body_x, v_body_z)            # AoA in pitch plane [rad]
+
+    # ── Lift coefficient (linear + hard stall clamp) ──────────────────
+    cl = DEFAULT_PARAMS["drone_cl_alpha"] * (alpha - DEFAULT_PARAMS["drone_alpha0"])
+    cl = np.clip(cl, -DEFAULT_PARAMS["drone_cl_max"], DEFAULT_PARAMS["drone_cl_max"])
+
+    # ── Lift direction ────────────────────────────────────────────────
+    # Start with "up" perpendicular to velocity: project world-Z onto
+    # the plane perpendicular to velocity
+    world_z     = np.array([0.0, 0.0, 1.0])
+    lift_up     = world_z - np.dot(world_z, v_hat) * v_hat
+    lift_up_norm = np.linalg.norm(lift_up)
+
+    if lift_up_norm < 1e-9:
+        # Flying straight up/down — lift direction undefined
+        return drag
+
+    lift_up = lift_up / lift_up_norm
+
+    # Rotate lift_up around velocity axis by roll angle φ (Rodrigues formula)
+    # R(v_hat, φ) · lift_up = lift_up·cos(φ) + (v_hat × lift_up)·sin(φ) + v_hat·(v_hat·lift_up)·(1-cos(φ))
+    # Since lift_up ⊥ v_hat, the last term vanishes:
+    phi     = drone.euler_angles[0]                    # roll angle [rad]
+    lateral = np.cross(v_hat, lift_up)                 # rightward axis in wind frame
+    lift_dir = lift_up * np.cos(phi) + lateral * np.sin(phi)
+
+    # ── Lift force ────────────────────────────────────────────────────
+    lift = cl * q_dyn * lift_dir
+
+    return drag + lift
 
 def compute_payload_aero_forces(payload: Payload) -> np.ndarray:
-    """Placeholder for payload aerodynamic forces. Currently returns zero."""
-    return np.zeros(3)
+    """
+    Simple drag on the payload (no attitude, no lift).
+    """
+    speed = np.linalg.norm(payload.v)
+    if speed < 1e-9:
+        return np.zeros(3)
+
+    q_dyn = 0.5 * DEFAULT_PARAMS["rho_air"] * speed
+    return -DEFAULT_PARAMS["payload_cd"] * DEFAULT_PARAMS["payload_a_ref"] * q_dyn * payload.v
+
 
 def compute_forces(drones: list[Drone], cables: list[Cable], payload: Payload) -> dict[int, dict[str, np.ndarray]]:
     """

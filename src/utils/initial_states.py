@@ -38,6 +38,9 @@ def get_initial_states(trajectories: dict[int, np.ndarray], dt: float) -> dict:
         axis=0,
     )
 
+    if np.any(np.isnan(payload_velocity)):
+        payload_velocity = np.zeros(3)
+
     states[-1] = {
         "position": payload_position,
         "velocity": payload_velocity,

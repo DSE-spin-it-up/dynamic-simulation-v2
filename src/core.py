@@ -22,7 +22,6 @@ def main():
     history = {"t": [], "drones": [[] for _ in drones], -1: []}
     history["trajectories"] = trajectories
     t = t_start
-    print(f"Initial: {history['trajectories'][0][0]}")
 
     while t < t_end:
 

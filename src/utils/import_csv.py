@@ -24,7 +24,7 @@ def load_drone_trajectories(filepath: str) -> tuple[float, float, float, dict[in
     drone_ids = sorted({
         int(match.group(1))
         for col in df.columns
-        if (match := re.match(r"dr_(\d+)_x", col))
+        if (match := re.match(r"drone_(\d+)_x", col))
     })
 
     # Build trajectory dictionary
@@ -33,9 +33,9 @@ def load_drone_trajectories(filepath: str) -> tuple[float, float, float, dict[in
     for (drone_id) in drone_ids:
         trajectories[drone_id] = df[
             [
-                f"dr_{drone_id}_x",
-                f"dr_{drone_id}_y",
-                f"dr_{drone_id}_z",
+                f"drone_{drone_id}_x",
+                f"drone_{drone_id}_y",
+                f"drone_{drone_id}_z",
             ]
         ].to_numpy(dtype=float)
 
