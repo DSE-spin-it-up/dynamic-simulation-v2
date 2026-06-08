@@ -38,7 +38,7 @@ class DroneController:
     
     def compute_moments(self, drone, trajectories, t, trajectories_dt) -> np.ndarray:
         """Placeholder for moment controller. Currently returns zero moments."""
-        return np.zeros(3)
+        return np.array([0.0, 0.0, 0.0])
     
     def estimate_velocity(self, traj, k, dt):
         n = len(traj)

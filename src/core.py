@@ -29,7 +29,7 @@ def main():
         # Record state at current time
         history["t"].append(t)
         for i, drone in enumerate(drones):
-            history["drones"][i].append(np.hstack((drone.position, drone.v)))
+            history["drones"][i].append(np.hstack((drone.position, drone.v, drone.q)))
         history[-1].append(np.hstack((payload.position, payload.v)))    
  
 
