@@ -27,23 +27,26 @@ def get_initial_states(trajectories: dict[int, np.ndarray], dt: float) -> dict:
             "velocity": initial_velocity,
         }
 
-    # Payload at center of drones
-    payload_position = np.mean(
-        [state["position"] for state in states.values()],
-        axis=0,
-    )
+    drone_positions = np.array([state["position"] for state in states.values()])
+    payload_x_y = np.mean(drone_positions[:, :2], axis=0)
+    
+    drone_z = drone_positions[0, 2] 
+
+    r_squared = np.sum((drone_positions[0, :2] - payload_x_y) ** 2)
+
+    L0 = DEFAULT_PARAMS["L0"]
+    if L0**2 < r_squared:
+        raise ValueError(f"Cable length L0 ({L0}) is too short! Must be greater than the formation radius ({np.sqrt(r_squared):.2f}m).")
+        
+    payload_z = drone_z - np.sqrt(L0**2 - r_squared)
+
+    payload_position = np.array([payload_x_y[0], payload_x_y[1], payload_z])
 
     payload_velocity = np.mean(
         [state["velocity"] for state in states.values()],
         axis=0,
     )
+    
+    states[-1] = {"position": payload_position, "velocity": payload_velocity}
 
-    if np.any(np.isnan(payload_velocity)):
-        payload_velocity = np.zeros(3)
-
-    states[-1] = {
-        "position": payload_position,
-        "velocity": payload_velocity,
-    }
-        
     return states

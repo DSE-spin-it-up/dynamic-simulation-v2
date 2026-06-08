@@ -8,7 +8,7 @@ from src.utils.initialise_objects import initialise_objects
 from src.utils.default_params import DEFAULT_PARAMS
 from src.utils.initial_states import get_initial_states
 from src.utils.import_csv import load_drone_trajectories
-from src.simulation.physics import compute_net_forces, compute_forces, update_state
+from src.simulation.physics import compute_net_forces, compute_forces, update_state, compute_moments, compute_net_moments
 from src.visualizations.plot import animate_trajectories_3d
 
 
@@ -37,27 +37,30 @@ def main():
 
         # Run low level DroneControllers (currently just returning a force)
         controller_forces = {}
+        controller_moments = {}
         for drone in drones:
             thrust = drone.controller.compute_thrust(drone, trajectories, t, trajectories_dt)
             controller_forces[drone.id] = thrust
+            controller_moments[drone.id] = drone.controller.compute_moments(drone, trajectories, t, trajectories_dt)
 
         # ---------------------------------- PHYSICS UPDATES ----------------------------------------
 
         forces = compute_forces(drones, cables, payload)
+        moments = compute_moments(drones, cables, payload) # currently returns zero moments
         # for V1, add controller forces
         for drone in drones:
             forces[drone.id]["thrust"] = controller_forces[drone.id]
+            moments[drone.id]["control"] = controller_moments[drone.id]
         # currently separated because V1 controller returns a force, and there is no aero modelling
         net_forces = compute_net_forces(forces)
+        net_moments = compute_net_moments(moments) # currently zero moments
 
         # Apply forces to update drone and payload states
         for drone in drones:
-            update_state(drone, net_forces[drone.id])
-        update_state(payload, net_forces[-1])
+            update_state(drone, net_forces[drone.id], net_moments[drone.id])
+        update_state(payload, net_forces[-1], net_moments[-1])
 
         # -------------------------------------------------- VISUALIZATION UPDATES ----------------------------------------
-
-        # Real time plotting
 
         # Time update
         t += DEFAULT_PARAMS["simulation_dt"]

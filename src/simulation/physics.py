@@ -1,23 +1,9 @@
 import numpy as np
-from scipy.integrate import solve_ivp
 
 from src.classes.cable import Cable
 from src.classes.drone import Drone
 from src.classes.payload import Payload
 from src.utils.default_params import DEFAULT_PARAMS
-
-def simulate(drones, payload, cables, params):
-    """
-    Legacy simulation function using RK45 integration. This is currently not used in the main code, but is kept for reference and potential future use.
-    Integrate equations of motion with RK45 and return trajectory history.
-
-    Returns
-    -------
-    dict with keys:
-        't'      : 1-D array of output times
-        'drones' : list of (N_times x 6) arrays — [x, y, z, vx, vy, vz] per drone
-        -1       : (N_times x 6) array — [x, y, z, vx, vy, vz] for payload
-    """
 
 def compute_gravity_force(mass: float) -> np.ndarray:
     """Compute gravitational force vector [0, 0, -mg]."""
@@ -155,10 +141,79 @@ def compute_net_forces(forces_dict: dict[int, dict[str, np.ndarray]]) -> dict[in
         net_forces[obj_id] = net_force
     return net_forces
 
-def update_state(object: Drone | Payload, net_force: np.ndarray) -> None:
+def compute_moments(drones: list[Drone], cables: list[Cable], payload: Payload) -> dict[int, dict[str, np.ndarray]]:
     """
-    Update the state of a drone or payload based on the net force acting on it.
+    Placeholder for moment calculations. Currently returns zero moments for all objects.
     """
+    moments = {drone.id: {"none": np.zeros(3)} for drone in drones}
+    moments[-1] = {"none": np.zeros(3)} # Payload moments accessed with ID -1
+    return moments
+
+def compute_net_moments(moments_dict: dict[int, dict[str, np.ndarray]]) -> dict[int, np.ndarray]:
+    """
+    Sum up moment components
+    """
+    net_moments = {}
+    for obj_id, components in moments_dict.items():
+        net_moment = np.zeros(3)
+        for _, moment_vector in components.items():
+            net_moment += moment_vector
+        net_moments[obj_id] = net_moment
+    return net_moments
+
+
+def update_state(object: Drone | Payload, net_force: np.ndarray, net_moment: np.ndarray) -> None:
+    """
+    Update the state of a drone or payload based on the net force and moment acting on it.
+    """
+    dt = DEFAULT_PARAMS["simulation_dt"]
+
     acceleration = net_force / object.mass
-    object.v += acceleration * DEFAULT_PARAMS["simulation_dt"]
-    object.position += object.v * DEFAULT_PARAMS["simulation_dt"]
+    object.v += acceleration * dt
+    object.position += object.v * dt
+
+    # Rotational Dynamics
+    if isinstance(object, Drone):
+        omega = object.omega
+        M = net_moment  # Assumed to be in the body-fixed frame [Mx, My, Mz]
+        
+        # Inertia tensor mapping (handling diagonal vector vs 3x3 matrix)
+        if object.inertia.ndim == 1:
+            I = object.inertia
+            I_inv = 1.0 / I
+            omega_dot = I_inv * (M - np.cross(omega, I * omega))
+        else:
+            I = object.inertia
+            I_inv = np.linalg.inv(I)
+            omega_dot = I_inv @ (M - np.cross(omega, I @ omega))
+
+        # Integrate angular velocity (Euler step)
+        object.omega += omega_dot * dt
+        
+        # Prevents high controller gains from triggering an exponential explosion
+        max_omega = 20.0  # rad/s (~1140 deg/s) max spin speed
+        omega_norm = np.linalg.norm(object.omega)
+        if omega_norm > max_omega:
+            object.omega = (object.omega / omega_norm) * max_omega
+            omega = object.omega
+
+        # Quaternion kinematics integration
+        qx, qy, qz, qw = object.q
+        wx, wy, wz = omega
+
+        dq_dt = 0.5 * np.array([
+             qw*wx + qy*wz - qz*wy,
+             qw*wy - qx*wz + qz*wx,
+             qw*wz + qx*wy - qy*wx,
+            -qx*wx - qy*wy - qz*wz
+        ])
+
+        # Update the quaternion state
+        object.q += dq_dt * dt
+
+        q_norm = np.linalg.norm(object.q)
+        if q_norm > 1e-6:
+            object.q /= q_norm
+        else:
+            # Emergency reset to level flight if it completely zeros out
+            object.q = np.array([0.0, 0.0, 0.0, 1.0])

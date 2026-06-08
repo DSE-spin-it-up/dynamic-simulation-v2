@@ -23,7 +23,7 @@ class Drone():
         # --- attitude state (new) ---
         self.q      = np.array([0.0, 0.0, 0.0, 1.0])          # quaternion, scalar-last (x,y,z,w), identity = level
         self.omega  = np.zeros(3)                               # angular velocity, body frame [rad/s]
-        self.inertia = inertia if inertia is not None else DEFAULT_INERTIA.copy()
+        self.inertia = DEFAULT_PARAMS["drone_inertia"]                      # inertia tensor, body frame [kg·m²]
 
         self.controller = DroneController()
 
