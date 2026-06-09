@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.widgets import Slider
-from typing import cast, Any
+import os
 
 
 def plot_trajectories(history):
@@ -343,3 +343,32 @@ def animate_trajectories_3d(
     plt.show()
 
     return anim
+
+
+def plot_drone_distances(history: dict, output_path: str = "output/drone_distances.png") -> None:
+    """
+    Plot inter-drone distances over time and save to PNG.
+    history["distances"][k] : 1D array of distances for pair k
+    history["distance_pairs"][k] : (id_i, id_j) tuple for pair k
+    """
+    t            = history["t"]
+    distances    = history["distances"]
+    pairs        = history["distance_pairs"]
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+
+    for k, (i, j) in enumerate(pairs):
+        ax.plot(t, distances[k], label=f"Drone {i} — Drone {j}")
+
+    ax.set_xlabel("Time [s]")
+    ax.set_ylabel("Distance [m]")
+    ax.set_title("Inter-drone distances over time")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    print(f"Minimum distance between drones: {min(np.min(d) for d in distances):.2f} m")
+    print(f"Saved drone distance plot to {output_path}")
