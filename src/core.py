@@ -9,7 +9,7 @@ from src.utils.default_params import DEFAULT_PARAMS
 from src.utils.initial_states import get_initial_states
 from src.utils.import_csv import load_drone_trajectories
 from src.simulation.physics import compute_net_forces, compute_forces, update_state
-from src.visualizations.plot import animate_trajectories_3d, plot_drone_distances, plot_trajectory_errors
+from src.visualizations.plot import animate_trajectories_3d, plot_drone_distances, plot_trajectory_errors, plot_drone_forces
 
 
 def main():
@@ -29,6 +29,7 @@ def main():
     history["distance_pairs"] = pairs          # e.g. [(0,1), (0,2), (1,2)]
     history["distances"] = [[] for _ in pairs] # one list per pair
     history["trajectory_errors"] = [[] for _ in drones]  # one list per drone
+    history["forces"] = {"aero": [[] for _ in drones], "thrust": [[] for _ in drones]}
 
     t = t_start
 
@@ -58,7 +59,7 @@ def main():
         # Run low level DroneControllers (currently just returning a force)
         controller_forces = {}
         for drone in drones:
-            thrust = drone.controller.compute_thrust(drone, trajectories, t, trajectories_dt)
+            thrust, record_thrust = drone.controller.compute_thrust(drone, trajectories, t, trajectories_dt)
             controller_forces[drone.id] = thrust
 
         # ---------------------------------- PHYSICS UPDATES ----------------------------------------
@@ -83,6 +84,11 @@ def main():
                 history["drones"][i][-1] = np.hstack((history["drones"][i][-1], dist))
                 history["drones"][j][-1] = np.hstack((history["drones"][j][-1], dist))
 
+        # ── FORCE RECORDING ───────────────────────────────────────────
+        for i, drone in enumerate(drones):
+            history["forces"]["aero"][i].append(forces[drone.id]["aero"].copy())
+            history["forces"]["thrust"][i].append(list(record_thrust).copy())
+
         # Time update
         t += DEFAULT_PARAMS["simulation_dt"]
 
@@ -92,6 +98,8 @@ def main():
     history[-1] = np.asarray(history[-1])
     history["distances"] = [np.asarray(d) for d in history["distances"]]
     history["trajectory_errors"] = [np.asarray(e) for e in history["trajectory_errors"]]
+    history["forces"]["aero"]   = [np.asarray(f) for f in history["forces"]["aero"]] # type: ignore
+    history["forces"]["thrust"] = [np.asarray(f) for f in history["forces"]["thrust"]] # type: ignore
 
     # Nominal distances — computed once from trajectory data, resampled to sim time axis
     traj_t = np.linspace(t_start, t_end, len(list(trajectories.values())[0]))
@@ -106,6 +114,7 @@ def main():
     animate_trajectories_3d(history)
     plot_drone_distances(history)
     plot_trajectory_errors(history)
+    plot_drone_forces(history)
 
 
 if __name__ == "__main__":

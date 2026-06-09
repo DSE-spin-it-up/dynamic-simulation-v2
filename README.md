@@ -164,6 +164,4 @@ We follow a Git flow model for feature development and bug fixes:
 
 # To be implemented
 - pendulum payload
-- wind disturmances
 - cable drag
-- plotting of errors

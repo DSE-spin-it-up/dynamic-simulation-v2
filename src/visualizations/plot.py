@@ -153,10 +153,6 @@ def animate_trajectories_3d(
     trail_length: int = 10,
     params: dict = {},
 ):
-    """
-    Real-time 3D animation with sliding window camera and equal axis scaling.
-    """
-
     from matplotlib import animation
     import matplotlib.pyplot as plt
     import numpy as np
@@ -172,9 +168,23 @@ def animate_trajectories_3d(
     payload_xyz = np.ascontiguousarray(history[-1][:, :3])
 
     has_phases = "phase" in history
+    has_forces = "forces" in history
+
+    # ── Force arrays (optional) ────────────────────────────────────
+    if has_forces:
+        aero_forces   = [np.asarray(history["forces"]["aero"][i])   for i in range(n_drones)]
+        thrust_forces = [np.asarray(history["forces"]["thrust"][i]) for i in range(n_drones)]
+
+        # Scale arrows to a fraction of window_size for visibility
+        window_size  = params.get("window_size", 30.0)
+        arrow_scale  = params.get("arrow_scale", window_size * 0.15)  # tweak as needed
+
+        # Compute max force magnitude across all drones/time for normalisation
+        max_aero   = max(np.linalg.norm(f, axis=1).max() for f in aero_forces)   + 1e-6
+        max_thrust = max(np.linalg.norm(f, axis=1).max() for f in thrust_forces) + 1e-6
 
     # -----------------------------
-    # Global bounds (for aspect hint)
+    # Global bounds
     # -----------------------------
     all_pos = np.vstack(drones_xyz + [payload_xyz])
     x_min, x_max = all_pos[:, 0].min(), all_pos[:, 0].max()
@@ -192,7 +202,6 @@ def animate_trajectories_3d(
     ax.set_title("Spin it up!")
     ax.grid(True)
 
-    # initial box aspect (will be re-applied every frame for stability)
     try:
         ax.set_box_aspect([
             x_max - x_min,
@@ -202,7 +211,6 @@ def animate_trajectories_3d(
     except Exception:
         pass
 
-    # optional: reduce perspective distortion (recommended for control sims)
     try:
         ax.set_proj_type('ortho')
     except Exception:
@@ -211,14 +219,14 @@ def animate_trajectories_3d(
     # -----------------------------
     # Artists
     # -----------------------------
-    drone_trails = []
+    drone_trails  = []
     drone_markers = []
-    cable_lines = []
+    cable_lines   = []
 
     for i, color in enumerate(colors):
-        trail = ax.plot([], [], [], linewidth=1.0, color=color)[0]
+        trail  = ax.plot([], [], [], linewidth=1.0, color=color)[0]
         marker = ax.plot([], [], [], "o", color=color, markersize=6, label=f"Drone {i}")[0]
-        cable = ax.plot([], [], [], "-", linewidth=1.0, color=color)[0]
+        cable  = ax.plot([], [], [], "-", linewidth=1.0, color=color)[0]
 
         ax.plot(
             history["trajectories"][i][:, 0],
@@ -232,9 +240,26 @@ def animate_trajectories_3d(
         cable_lines.append(cable)
 
     payload_marker = ax.plot([], [], [], "ks", markersize=8, label="Payload")[0]
-    time_text = ax.text2D(0.02, 0.95, "", transform=ax.transAxes)
+    time_text      = ax.text2D(0.02, 0.95, "", transform=ax.transAxes)
 
-    ax.legend(loc="upper right")
+    # ── Quiver artists for forces ──────────────────────────────────
+    # Quivers can't be updated in-place in 3D matplotlib — remove/recreate each frame
+    aero_quivers   = [None] * n_drones
+    thrust_quivers = [None] * n_drones
+
+    # Add dummy patches for legend
+    if has_forces:
+        from matplotlib.lines import Line2D
+        ax.legend(
+            loc="upper right",
+            handles=[
+                *[Line2D([0],[0], color=colors[i], marker='o', label=f"Drone {i}") for i in range(n_drones)],
+                Line2D([0],[0], color='white', marker='>', markerfacecolor='cyan',   markersize=8, label="Aero"),
+                Line2D([0],[0], color='white', marker='>', markerfacecolor='orange', markersize=8, label="Thrust"),
+            ]
+        )
+    else:
+        ax.legend(loc="upper right")
 
     all_artists = tuple(
         drone_trails + drone_markers + cable_lines + [payload_marker, time_text]
@@ -253,7 +278,6 @@ def animate_trajectories_3d(
         for c in cable_lines:
             c.set_data([], [])
             cast(Any, c).set_3d_properties([])
-
         payload_marker.set_data([], [])
         cast(Any, payload_marker).set_3d_properties([])
         time_text.set_text("")
@@ -262,29 +286,23 @@ def animate_trajectories_3d(
     # -----------------------------
     # Update
     # -----------------------------
-    n_frames = (len(history["t"]) - 1) // stride + 1
+    n_frames    = (len(history["t"]) - 1) // stride + 1
     window_size = params.get("window_size", 30.0)
-    half_win = window_size / 2.0
+    half_win    = window_size / 2.0
 
     def _update(frame):
-        k = min(frame * stride, len(history["t"]) - 1)
+        nonlocal aero_quivers, thrust_quivers
+
+        k  = min(frame * stride, len(history["t"]) - 1)
         trail_start = max(0, k - trail_length)
 
         px, py, pz = payload_xyz[k]
 
-        # -----------------------------
-        # drones
-        # -----------------------------
         for i in range(n_drones):
             xyz = drones_xyz[i]
 
-            drone_trails[i].set_data(
-                xyz[trail_start:k+1, 0],
-                xyz[trail_start:k+1, 1],
-            )
-            cast(Any, drone_trails[i]).set_3d_properties(
-                xyz[trail_start:k+1, 2]
-            )
+            drone_trails[i].set_data(xyz[trail_start:k+1, 0], xyz[trail_start:k+1, 1])
+            cast(Any, drone_trails[i]).set_3d_properties(xyz[trail_start:k+1, 2])
 
             drone_markers[i].set_data([xyz[k, 0]], [xyz[k, 1]])
             cast(Any, drone_markers[i]).set_3d_properties([xyz[k, 2]])
@@ -292,29 +310,43 @@ def animate_trajectories_3d(
             cable_lines[i].set_data([px, xyz[k, 0]], [py, xyz[k, 1]])
             cast(Any, cable_lines[i]).set_3d_properties([pz, xyz[k, 2]])
 
-        # payload
+            # ── Force arrows ───────────────────────────────────────
+            if has_forces:
+                x0, y0, z0 = xyz[k]
+
+                # Remove previous quivers
+                if aero_quivers[i] is not None:
+                    aero_quivers[i].remove()
+                if thrust_quivers[i] is not None:
+                    thrust_quivers[i].remove()
+
+                aero_vec   = aero_forces[i][k]
+                thrust_vec = thrust_forces[i][k]
+
+                # Normalise then scale to fixed arrow_scale length
+                aero_dir   = aero_vec   / max_aero   * arrow_scale
+                thrust_dir = thrust_vec / max_thrust * arrow_scale
+
+                aero_quivers[i] = ax.quiver(
+                    x0, y0, z0,
+                    aero_dir[0], aero_dir[1], aero_dir[2],
+                    color="cyan", linewidth=1.5, arrow_length_ratio=0.3,
+                )
+                thrust_quivers[i] = ax.quiver(
+                    x0, y0, z0,
+                    thrust_dir[0], thrust_dir[1], thrust_dir[2],
+                    color="orange", linewidth=1.5, arrow_length_ratio=0.3,
+                )
+
         payload_marker.set_data([px], [py])
         cast(Any, payload_marker).set_3d_properties([pz])
 
-        # -----------------------------
-        # SLIDING WINDOW + EQUAL SCALE
-        # -----------------------------
         cx, cy, cz = px, py, pz
-
-        xmin, xmax = cx - half_win, cx + half_win
-        ymin, ymax = cy - half_win, cy + half_win
-        zmin, zmax = cz - half_win, cz + half_win
-
-        ax.set_xlim(xmin, xmax)
-        ax.set_ylim(ymin, ymax)
-        ax.set_zlim(zmin, zmax)
-
-        # enforce identical scaling in all axes (critical line)
+        ax.set_xlim(cx - half_win, cx + half_win)
+        ax.set_ylim(cy - half_win, cy + half_win)
+        ax.set_zlim(cz - half_win, cz + half_win)
         ax.set_box_aspect((1, 1, 1))
 
-        # -----------------------------
-        # time label
-        # -----------------------------
         label = f"t = {history['t'][k]:6.2f} s"
         if has_phases:
             label += f" | {history['phase'][k]}"
@@ -323,10 +355,10 @@ def animate_trajectories_3d(
         return all_artists
 
     # -----------------------------
-    # animation
+    # Animation
     # -----------------------------
     from src.utils.default_params import DEFAULT_PARAMS
-    dt = DEFAULT_PARAMS.get("dt", 0.01)
+    dt          = DEFAULT_PARAMS.get("dt", 0.01)
     interval_ms = max(1, int(round(stride * dt * 1000)))
 
     anim = animation.FuncAnimation(
@@ -335,7 +367,7 @@ def animate_trajectories_3d(
         frames=n_frames,
         init_func=_init,
         interval=interval_ms,
-        blit=False,   # required for dynamic axis updates
+        blit=False,
         cache_frame_data=False,
     )
 
@@ -414,3 +446,53 @@ def plot_trajectory_errors(history: dict, output_path: str = "output/trajectory_
     fig.savefig(output_path, dpi=150)
     plt.close(fig)
     print(f"Saved trajectory error plot to {output_path}")
+
+def plot_drone_forces(history: dict, output_path: str = "output/drone_forces.png") -> None:
+    """
+    Plot aerodynamic and controller thrust force magnitudes per drone over time.
+    Each drone gets one row, with aero and thrust magnitude on the same axes.
+    """
+    t      = history["t"]
+    n      = len(history["forces"]["aero"])
+
+    dt     = float(t[1] - t[0])
+    window = max(1, int(1.0 / dt))
+    kernel = np.ones(window) / window
+
+    fig, axes = plt.subplots(n, 1, figsize=(10, 3 * n), sharex=True)
+    if n == 1:
+        axes = [axes]
+
+    for i, ax in enumerate(axes):
+        aero_mag   = np.linalg.norm(history["forces"]["aero"][i],   axis=1)
+        forward_component = history["forces"]["thrust"][i][:, 0]
+        lateral_component = history["forces"]["thrust"][i][:, 1]
+        upward_component  = history["forces"]["thrust"][i][:, 2]
+        thrust_mag = np.linalg.norm(history["forces"]["thrust"][i], axis=1)
+
+        aero_smooth   = np.convolve(aero_mag,   kernel, mode="same")
+        thrust_smooth = np.convolve(thrust_mag, kernel, mode="same")
+        forward_smooth = np.convolve(forward_component, kernel, mode="same")
+        lateral_smooth = np.convolve(lateral_component, kernel, mode="same")
+        upward_smooth  = np.convolve(upward_component, kernel, mode="same")
+
+        # ax.plot(t, aero_smooth,   linewidth=1.5, color=f"C0", label="Aero resultant")
+        # ax.plot(t, thrust_smooth, linewidth=1.5, color=f"C1", label="Controller thrust")
+        ax.plot(t, forward_smooth, linewidth=1.0, color=f"C1", label="Thrust forward", linestyle="-")
+        ax.plot(t, lateral_smooth, linewidth=1.0, color=f"C1", label="Thrust lateral", linestyle="--")
+        ax.plot(t, upward_smooth,  linewidth=1.0, color=f"C1", label="Thrust upward",  linestyle=":")
+
+        ax.set_ylabel("Force [N]")
+        ax.set_title(f"Drone {i}")
+        ax.legend(fontsize=8)
+        ax.set_ylim(bottom=0)
+        ax.grid(True, alpha=0.3)
+
+    axes[-1].set_xlabel("Time [s]")
+    fig.suptitle("Aerodynamic and controller forces per drone", y=1.01)
+    fig.tight_layout()
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved drone forces plot to {output_path}")
