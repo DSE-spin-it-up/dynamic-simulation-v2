@@ -346,23 +346,66 @@ def animate_trajectories_3d(
 
 
 def plot_drone_distances(history: dict, output_path: str = "output/drone_distances.png") -> None:
-    """
-    Plot inter-drone distances over time and save to PNG.
-    history["distances"][k] : 1D array of distances for pair k
-    history["distance_pairs"][k] : (id_i, id_j) tuple for pair k
-    """
-    t            = history["t"]
-    distances    = history["distances"]
-    pairs        = history["distance_pairs"]
+    t                 = history["t"]
+    distances         = history["distances"]
+    nominal_distances = history["nominal_distances"]
+    pairs             = history["distance_pairs"]
+    n                 = len(pairs)
+
+    fig, axes = plt.subplots(n, 1, figsize=(10, 3 * n), sharex=True)
+    if n == 1:
+        axes = [axes]
+
+    for k, (ax, (i, j)) in enumerate(zip(axes, pairs)):
+        color = f"C{k}"
+        ax.plot(t, distances[k],          linewidth=1.5, color=color, label="Simulated")
+        ax.plot(t, nominal_distances[k],  linewidth=1.0, color=color, label="Nominal",
+                linestyle="--", alpha=0.7)
+
+        min_sim     = np.min(distances[k])
+        min_nominal = np.min(nominal_distances[k])
+
+        textstr = f"Min simulated:  {min_sim:.2f} m\nMin nominal:      {min_nominal:.2f} m"
+        ax.text(
+            0.02, 0.97, textstr,
+            transform=ax.transAxes,
+            fontsize=8,
+            verticalalignment="top",
+            bbox=dict(boxstyle="round,pad=0.4", facecolor="white", edgecolor="grey", alpha=0.8),
+        )
+
+        ax.set_ylabel("Distance [m]")
+        ax.set_title(f"Drone {i} — Drone {j}")
+        ax.legend(fontsize=8)
+        ax.set_ylim(bottom=0)
+        ax.grid(True, alpha=0.3)
+
+    axes[-1].set_xlabel("Time [s]")
+    fig.suptitle("Inter-drone distances: simulated vs nominal", y=1.01)
+    fig.tight_layout()
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved drone distance plot to {output_path}")
+
+def plot_trajectory_errors(history: dict, output_path: str = "output/trajectory_errors.png") -> None:
+    t      = history["t"]
+    errors = history["trajectory_errors"]
+
+    dt     = float(t[1] - t[0])
+    window = max(1, int(1.0 / dt))
+    kernel = np.ones(window) / window
 
     fig, ax = plt.subplots(figsize=(10, 4))
 
-    for k, (i, j) in enumerate(pairs):
-        ax.plot(t, distances[k], label=f"Drone {i} — Drone {j}")
+    for i, error in enumerate(errors):
+        smoothed = np.convolve(error, kernel, mode="same")
+        ax.plot(t, smoothed, linewidth=1.5, color=f"C{i}", label=f"Drone {i}")
 
     ax.set_xlabel("Time [s]")
-    ax.set_ylabel("Distance [m]")
-    ax.set_title("Inter-drone distances over time")
+    ax.set_ylabel("Position error [m]")
+    ax.set_title("Trajectory tracking error per drone")
     ax.legend()
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
@@ -370,5 +413,4 @@ def plot_drone_distances(history: dict, output_path: str = "output/drone_distanc
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     fig.savefig(output_path, dpi=150)
     plt.close(fig)
-    print(f"Minimum distance between drones: {min(np.min(d) for d in distances):.2f} m")
-    print(f"Saved drone distance plot to {output_path}")
+    print(f"Saved trajectory error plot to {output_path}")

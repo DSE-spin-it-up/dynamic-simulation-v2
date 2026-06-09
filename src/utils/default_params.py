@@ -40,7 +40,7 @@ DEFAULT_PARAMS: dict = {
     "cruise_range":             1000.0,  # ground distance to cover during CRUISE, m
 
     # Wind
-    "wind": True,
+    "wind": False,
     "wind_type": "turbulence",  # "constant", "gust", "oscillating" or "turbulence"
     "wind_constant": np.array([5.0, 0.0, 0.0]),  # m/s (for constant wind)
     "wing_gust_speed": 10.0,   # m/s (for gusts)
