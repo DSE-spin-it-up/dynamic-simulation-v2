@@ -161,3 +161,9 @@ We follow a Git flow model for feature development and bug fixes:
 ### Best Practices
 - Keep branches focused on a single feature or bug fix
 - Commit often and with meaninful commit messages
+
+# To be implemented
+- pendulum payload
+- wind disturmances
+- cable drag
+- plotting of errors

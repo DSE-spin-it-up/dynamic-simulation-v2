@@ -4,7 +4,7 @@ import numpy as np
 #  DEFAULT SIMULATION PARAMETERS
 # ===========================================================================
 DEFAULT_PARAMS: dict = {
-    "trajectories_path": "trajectories.csv", # path to drone trajectories CSV file
+    "trajectories_path": "mission.csv", # path to drone trajectories CSV file
     "n_drones": 3,      # number of drones in the system
 
     # Physical constants
@@ -17,7 +17,7 @@ DEFAULT_PARAMS: dict = {
     "m_payload": 50.0,         # payload mass, kg
 
     # Cable properties
-    "L0": 12.5,          # rest length, m 
+    "L0": 18,          # rest length, m 
     "k_cable": 100000.0,   # spring stiffness, N/m 
     "d_cable":  100.0,   # damping, N·s/m
 

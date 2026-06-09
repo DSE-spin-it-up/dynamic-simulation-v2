@@ -154,15 +154,7 @@ def animate_trajectories_3d(
     params: dict = {},
 ):
     """
-    Real-time 3D animation version.
-
-    Optimisations
-    -------------
-    - blit=True with explicit init_func for clean redraws
-    - Pre-converted numpy arrays (no repeated slicing overhead)
-    - cache_frame_data=False to avoid double-rendering
-    - interval capped to stay in sync with real time
-    - Minimal artist list returned from _update
+    Real-time 3D animation with sliding window camera and equal axis scaling.
     """
 
     from matplotlib import animation
@@ -173,43 +165,26 @@ def animate_trajectories_3d(
     n_drones = len(history["drones"])
     colors = plt.get_cmap('tab10')(np.linspace(0, 0.9, n_drones))
 
-    # Pre-extract and contiguify arrays for fast slicing
-    drones_xyz = [np.ascontiguousarray(history["drones"][i][:, :3]) for i in range(n_drones)]
+    drones_xyz = [
+        np.ascontiguousarray(history["drones"][i][:, :3])
+        for i in range(n_drones)
+    ]
     payload_xyz = np.ascontiguousarray(history[-1][:, :3])
 
     has_phases = "phase" in history
 
-    # ------------------------------------------------------------------
-    # Axis limits (computed once)
-    # ------------------------------------------------------------------
-
+    # -----------------------------
+    # Global bounds (for aspect hint)
+    # -----------------------------
     all_pos = np.vstack(drones_xyz + [payload_xyz])
     x_min, x_max = all_pos[:, 0].min(), all_pos[:, 0].max()
     y_min, y_max = all_pos[:, 1].min(), all_pos[:, 1].max()
     z_min, z_max = all_pos[:, 2].min(), all_pos[:, 2].max()
-    pad = 1.0
 
-    # ------------------------------------------------------------------
-    # Figure — use a fast interactive backend if available
-    # ------------------------------------------------------------------
-
-    plt.switch_backend('TkAgg')  # faster than Qt5Agg for animations; remove if unavailable
+    plt.switch_backend('TkAgg')
 
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection="3d")
-
-    ax.set_xlim(x_min - pad, x_max + pad)
-    ax.set_ylim(y_min - pad, y_max + pad)
-    ax.set_zlim(min(0, z_min - pad), z_max + pad)
-
-    try:
-        ax.set_box_aspect([
-            x_max - x_min,
-            y_max - y_min,
-            z_max - z_min + 1e-6,
-        ])
-    except AttributeError:
-        pass
 
     ax.set_xlabel("X [m]")
     ax.set_ylabel("Y [m]")
@@ -217,20 +192,34 @@ def animate_trajectories_3d(
     ax.set_title("Spin it up!")
     ax.grid(True)
 
-    # ------------------------------------------------------------------
-    # Animated artists
-    # ------------------------------------------------------------------
+    # initial box aspect (will be re-applied every frame for stability)
+    try:
+        ax.set_box_aspect([
+            x_max - x_min,
+            y_max - y_min,
+            z_max - z_min + 1e-6,
+        ])
+    except Exception:
+        pass
 
+    # optional: reduce perspective distortion (recommended for control sims)
+    try:
+        ax.set_proj_type('ortho')
+    except Exception:
+        pass
+
+    # -----------------------------
+    # Artists
+    # -----------------------------
     drone_trails = []
     drone_markers = []
     cable_lines = []
 
     for i, color in enumerate(colors):
-        trail = ax.plot([], [], [], linewidth=1.0, color=color, antialiased=False)[0]
-        marker = ax.plot([], [], [], "o", color=color, markersize=6, antialiased=False, label=f"Drone {i}")[0]
-        cable = ax.plot([], [], [], "-", linewidth=1.0, color=color, antialiased=False)[0]
+        trail = ax.plot([], [], [], linewidth=1.0, color=color)[0]
+        marker = ax.plot([], [], [], "o", color=color, markersize=6, label=f"Drone {i}")[0]
+        cable = ax.plot([], [], [], "-", linewidth=1.0, color=color)[0]
 
-        # Static trajectory — drawn once, not part of blit artists
         ax.plot(
             history["trajectories"][i][:, 0],
             history["trajectories"][i][:, 1],
@@ -243,38 +232,39 @@ def animate_trajectories_3d(
         cable_lines.append(cable)
 
     payload_marker = ax.plot([], [], [], "ks", markersize=8, label="Payload")[0]
-
-    time_text = ax.text2D(0.02, 0.95, "", transform=ax.transAxes, fontsize=10, family="monospace")
+    time_text = ax.text2D(0.02, 0.95, "", transform=ax.transAxes)
 
     ax.legend(loc="upper right")
 
-    # All dynamic artists in one flat tuple for fast return
-    all_artists = tuple(drone_trails + drone_markers + cable_lines + [payload_marker, time_text])
+    all_artists = tuple(
+        drone_trails + drone_markers + cable_lines + [payload_marker, time_text]
+    )
 
-    # ------------------------------------------------------------------
-    # Init function (required for blit=True)
-    # ------------------------------------------------------------------
-
+    # -----------------------------
+    # Init
+    # -----------------------------
     def _init():
-        for trail in drone_trails:
-            trail.set_data([], [])
-            cast(Any, trail).set_3d_properties([])
-        for marker in drone_markers:
-            marker.set_data([], [])
-            cast(Any, marker).set_3d_properties([])
-        for cable in cable_lines:
-            cable.set_data([], [])
-            cast(Any, cable).set_3d_properties([])
+        for t in drone_trails:
+            t.set_data([], [])
+            cast(Any, t).set_3d_properties([])
+        for m in drone_markers:
+            m.set_data([], [])
+            cast(Any, m).set_3d_properties([])
+        for c in cable_lines:
+            c.set_data([], [])
+            cast(Any, c).set_3d_properties([])
+
         payload_marker.set_data([], [])
         cast(Any, payload_marker).set_3d_properties([])
         time_text.set_text("")
         return all_artists
 
-    # ------------------------------------------------------------------
-    # Update function
-    # ------------------------------------------------------------------
-
+    # -----------------------------
+    # Update
+    # -----------------------------
     n_frames = (len(history["t"]) - 1) // stride + 1
+    window_size = params.get("window_size", 30.0)
+    half_win = window_size / 2.0
 
     def _update(frame):
         k = min(frame * stride, len(history["t"]) - 1)
@@ -282,24 +272,49 @@ def animate_trajectories_3d(
 
         px, py, pz = payload_xyz[k]
 
+        # -----------------------------
+        # drones
+        # -----------------------------
         for i in range(n_drones):
             xyz = drones_xyz[i]
 
-            # Trail
-            drone_trails[i].set_data(xyz[trail_start:k+1, 0], xyz[trail_start:k+1, 1])
-            cast(Any, drone_trails[i]).set_3d_properties(xyz[trail_start:k+1, 2])
+            drone_trails[i].set_data(
+                xyz[trail_start:k+1, 0],
+                xyz[trail_start:k+1, 1],
+            )
+            cast(Any, drone_trails[i]).set_3d_properties(
+                xyz[trail_start:k+1, 2]
+            )
 
-            # Marker
             drone_markers[i].set_data([xyz[k, 0]], [xyz[k, 1]])
             cast(Any, drone_markers[i]).set_3d_properties([xyz[k, 2]])
 
-            # Cable
             cable_lines[i].set_data([px, xyz[k, 0]], [py, xyz[k, 1]])
             cast(Any, cable_lines[i]).set_3d_properties([pz, xyz[k, 2]])
 
+        # payload
         payload_marker.set_data([px], [py])
         cast(Any, payload_marker).set_3d_properties([pz])
 
+        # -----------------------------
+        # SLIDING WINDOW + EQUAL SCALE
+        # -----------------------------
+        cx, cy, cz = px, py, pz
+
+        xmin, xmax = cx - half_win, cx + half_win
+        ymin, ymax = cy - half_win, cy + half_win
+        zmin, zmax = cz - half_win, cz + half_win
+
+        ax.set_xlim(xmin, xmax)
+        ax.set_ylim(ymin, ymax)
+        ax.set_zlim(zmin, zmax)
+
+        # enforce identical scaling in all axes (critical line)
+        ax.set_box_aspect((1, 1, 1))
+
+        # -----------------------------
+        # time label
+        # -----------------------------
         label = f"t = {history['t'][k]:6.2f} s"
         if has_phases:
             label += f" | {history['phase'][k]}"
@@ -307,10 +322,9 @@ def animate_trajectories_3d(
 
         return all_artists
 
-    # ------------------------------------------------------------------
-    # Real-time interval
-    # ------------------------------------------------------------------
-
+    # -----------------------------
+    # animation
+    # -----------------------------
     from src.utils.default_params import DEFAULT_PARAMS
     dt = DEFAULT_PARAMS.get("dt", 0.01)
     interval_ms = max(1, int(round(stride * dt * 1000)))
@@ -321,8 +335,8 @@ def animate_trajectories_3d(
         frames=n_frames,
         init_func=_init,
         interval=interval_ms,
-        blit=True,               # ← key speedup
-        cache_frame_data=False,  # avoids storing all frames in memory
+        blit=False,   # required for dynamic axis updates
+        cache_frame_data=False,
     )
 
     plt.tight_layout()
