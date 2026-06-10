@@ -10,13 +10,13 @@ DEFAULT_PARAMS: dict = {
     # Physical constants
     "g": 9.81,          # gravitational acceleration, m/s²
     "rho_air": 1.225,    # air density at sea level, kg/m³
-    "thrust_limit_forward": 250.0, # maximum thrust per drone, N
-    "thrust_limit_upward": 150.0,  # maximum upward thrust per drone, N
-    "thrust_limit_lateral": 150.0, # maximum lateral thrust per drone, N
+    "thrust_limit_forward": 180.0, # maximum thrust per drone, N
+    "thrust_limit_upward": 200.0,  # maximum upward thrust per drone, N
+    "thrust_limit_lateral": 90.0, # maximum lateral thrust per drone, N
 
     # Drone properties
     "m_drone": 6.8,         # drone mass, kg  (each)
-    "drone_cl": 0.8,                # lift coefficient
+    "drone_cl": 0.5,                # lift coefficient
     "drone_cd": 0.1,                # drag coefficient
     "drone_area": 1.4,              # wing area for aero forces
     # Payload properties
@@ -30,16 +30,16 @@ DEFAULT_PARAMS: dict = {
     "d_cable":  100.0,   # damping, N·s/m
 
     # Controller
-    "prop_error" : 100.0,   # proportional gain for radial error
+    "prop_error" : 80.0,   # proportional gain for radial error
     "deriv_error" : 100.0,    # derivative gain for radial error
     "int_error" : 10.0,      # integral gain for radial error
-    "integral_limit": 1000.0, # maximum magnitude of integral error term
+    "integral_limit": 3000.0, # maximum magnitude of integral error term
 
     # Integration
     "simulation_dt":      0.01,    # output time-step (not the ODE step)
 
     # Wind
-    "wind": True,
+    "wind": False,
     "wind_type": "constant",  # "constant", "gust", "oscillating" or "turbulence"
     "wind_constant": np.array([-5.0, 0.0, 0.0]),  # m/s (for constant wind)
     "wing_gust_speed": 10.0,   # m/s (for gusts)

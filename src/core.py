@@ -91,6 +91,10 @@ def main():
 
         # Time update
         t += DEFAULT_PARAMS["simulation_dt"]
+        # DEBUG
+        # if not np.isnan(drone.position).any():
+
+        #     print(f"drone positions at t={t:.2f}s: {[drone.position for drone in drones]} payload position: {payload.position}")
 
     # Post-simulation processing for visualization
     history["t"] = np.asarray(history["t"])

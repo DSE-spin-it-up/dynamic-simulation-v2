@@ -16,41 +16,44 @@ def compute_drone_aero_forces(drone: Drone, wind_vector: np.ndarray | None) -> n
 
     Drag
     ----
-        F_drag = -½ · ρ · Cd · A · |v|² · v_hat
+        F_drag = ½ · ρ · Cd · A · |v_rel|² · v_hat
 
     Lift
     ----
-    Dynamic pressure:
-            q = ½ · ρ · A · |v|²
-
-    Angle of attack α:
-            α = atan2(v · body_x, v · body_z)   [in the pitch plane]
-
-    Lift coefficient:
-            Cl = clip(Cl_alpha · (α - α0), -Cl_max, Cl_max)
-
-    Lift direction: perpendicular to velocity, starting straight "up"
-            L_dir = Rodrigues(v_hat, φ) · lift_up
+        q = ½ · ρ · A · |v_rel|²
+        lift_dir = world_up projected onto plane perpendicular to v_hat
+        F_lift = Cl · q · lift_dir
+        (zero when flying vertically — correct fixed-wing behaviour)
     """
-    """Placeholder for drone aerodynamic forces. Currently returns zero."""
-    # lift = 0.5 * rho * v^2 * A * Cl
-    # drag = 0.5 * rho * v^2 * A * Cd
+    if wind_vector is None:
+        wind_vector = np.zeros(3)
+
     relative_air_velocity = wind_vector - drone.v
     speed = np.linalg.norm(relative_air_velocity)
 
-    # ── Drag ──────────────────────────────────────────────────────────
     if speed < 1e-9:
         return np.zeros(3)
 
     v_hat = relative_air_velocity / speed
     q_dyn = 0.5 * DEFAULT_PARAMS["rho_air"] * DEFAULT_PARAMS["drone_area"] * speed**2
 
-    drag = DEFAULT_PARAMS["drone_cd"] * q_dyn * v_hat # no negative sign because its relative velocity to wind, which is already in the opposite direction of drag
+    # ── Drag ──────────────────────────────────────────────────────────
+    # No negative sign: relative velocity already points opposite to drag
+    drag = DEFAULT_PARAMS["drone_cd"] * q_dyn * v_hat
 
-    # ── Lift direction ────────────────────────────────────────────────
-    # Assume lift acts perpendicular to velocity in the "up" direction of simulation z axis. Assume constant Cl
-    lift_up = np.array([0, 0, 1])
-    lift = DEFAULT_PARAMS["drone_cl"] * q_dyn * lift_up  # Placeholder: Cl is constant
+    # ── Lift ──────────────────────────────────────────────────────────
+    # Lift is perpendicular to velocity — vanishes when flying vertically.
+    # Project world-up onto the plane perpendicular to v_hat.
+    world_up = np.array([0.0, 0.0, 1.0])
+    lift_dir = world_up - np.dot(world_up, v_hat) * v_hat
+    lift_dir_norm = np.linalg.norm(lift_dir)
+
+    if lift_dir_norm > 1e-6:
+        lift_dir /= lift_dir_norm
+        lift = DEFAULT_PARAMS["drone_cl"] * q_dyn * lift_dir
+    else:
+        # Flying perfectly vertically — no lift
+        lift = np.zeros(3)
 
     return drag + lift
 

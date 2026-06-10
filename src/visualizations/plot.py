@@ -480,7 +480,7 @@ def plot_drone_forces(history: dict, output_path: str = "output/drone_forces.png
         # ax.plot(t, thrust_smooth, linewidth=1.5, color=f"C1", label="Controller thrust")
         ax.plot(t, forward_smooth, linewidth=1.0, color=f"C1", label="Thrust forward", linestyle="-")
         ax.plot(t, lateral_smooth, linewidth=1.0, color=f"C1", label="Thrust lateral", linestyle="--")
-        ax.plot(t, upward_smooth,  linewidth=1.0, color=f"C1", label="Thrust upward",  linestyle=":")
+        # ax.plot(t, upward_smooth,  linewidth=1.0, color=f"C1", label="Thrust upward",  linestyle=":")
 
         ax.set_ylabel("Force [N]")
         ax.set_title(f"Drone {i}")
