@@ -16,12 +16,12 @@ def main():
     t_start, t_end, trajectories_dt, trajectories = load_drone_trajectories(DEFAULT_PARAMS["trajectories_path"])
 
     initial_states = get_initial_states(trajectories=trajectories, dt=trajectories_dt)
-    drones, payload, cables = initialise_objects(initial_states)
+    drones, connector, payload, cables = initialise_objects(initial_states)
     last_gust_t = None
     last_wind_vector = None
 
     # Main simulation loop
-    history = {"t": [], "drones": [[] for _ in drones], -1: []}
+    history = {"t": [], "drones": [[] for _ in drones], -1: [], -2: []} # drone states, connector state and payload state
     history["trajectories"] = trajectories
     # Pre-compute pair labels once
     drone_ids = [drone.id for drone in drones]
@@ -40,7 +40,8 @@ def main():
         history["t"].append(t)
         for i, drone in enumerate(drones):
             history["drones"][i].append(np.hstack((drone.position, drone.v)))
-        history[-1].append(np.hstack((payload.position, payload.v))) 
+        history[-1].append(np.hstack((connector.position, connector.v))) 
+        history[-2].append(np.hstack((payload.position, payload.v))) 
 
             # ── DISTANCE RECORDING ────────────────────────────────────────
         for k, (i, j) in enumerate(pairs):
@@ -64,18 +65,18 @@ def main():
 
         # ---------------------------------- PHYSICS UPDATES ----------------------------------------
 
-        forces, last_gust_t, last_wind_vector = compute_forces(drones, cables, payload, last_gust_t, last_wind_vector, t=t)
+        forces, last_gust_t, last_wind_vector = compute_forces(drones, cables, connector, payload, last_gust_t, last_wind_vector, t=t)
         # for V1, add controller forces
         for drone in drones:
             forces[drone.id]["thrust"] = controller_forces[drone.id]
         # currently separated because V1 controller returns a force, and there is no aero modelling
         net_forces = compute_net_forces(forces)
 
-        # Apply forces to update drone and payload states
+        # Apply forces to update drone and connector states
         for drone in drones:
             update_state(drone, net_forces[drone.id])
-        update_state(payload, net_forces[-1])
-
+        update_state(connector, net_forces[-1])
+        update_state(payload, net_forces[-2])
         # -------------------------------------------------- VISUALIZATION UPDATES ----------------------------------------
         # store distance between drones
         for i in range(len(drones)):
@@ -100,6 +101,7 @@ def main():
     history["t"] = np.asarray(history["t"])
     history["drones"] = [np.asarray(traj) for traj in history["drones"]]
     history[-1] = np.asarray(history[-1])
+    history[-2] = np.asarray(history[-2])
     history["distances"] = [np.asarray(d) for d in history["distances"]]
     history["trajectory_errors"] = [np.asarray(e) for e in history["trajectory_errors"]]
     history["forces"]["aero"]   = [np.asarray(f) for f in history["forces"]["aero"]] # type: ignore

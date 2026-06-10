@@ -159,39 +159,58 @@ def animate_trajectories_3d(
     from typing import Any, cast
 
     n_drones = len(history["drones"])
-    colors = plt.get_cmap('tab10')(np.linspace(0, 0.9, n_drones))
+    colors = plt.get_cmap("tab10")(np.linspace(0, 0.9, n_drones))
 
     drones_xyz = [
         np.ascontiguousarray(history["drones"][i][:, :3])
         for i in range(n_drones)
     ]
-    payload_xyz = np.ascontiguousarray(history[-1][:, :3])
+
+    connector_xyz = np.ascontiguousarray(history[-1][:, :3])
+    payload_xyz = np.ascontiguousarray(history[-2][:, :3])
 
     has_phases = "phase" in history
     has_forces = "forces" in history
 
-    # ── Force arrays (optional) ────────────────────────────────────
+    # ------------------------------------------------------------------
+    # Force arrays
+    # ------------------------------------------------------------------
     if has_forces:
-        aero_forces   = [np.asarray(history["forces"]["aero"][i])   for i in range(n_drones)]
-        thrust_forces = [np.asarray(history["forces"]["thrust"][i]) for i in range(n_drones)]
+        aero_forces = [
+            np.asarray(history["forces"]["aero"][i])
+            for i in range(n_drones)
+        ]
 
-        # Scale arrows to a fraction of window_size for visibility
-        window_size  = params.get("window_size", 30.0)
-        arrow_scale  = params.get("arrow_scale", window_size * 0.15)  # tweak as needed
+        thrust_forces = [
+            np.asarray(history["forces"]["thrust"][i])
+            for i in range(n_drones)
+        ]
 
-        # Compute max force magnitude across all drones/time for normalisation
-        max_aero   = max(np.linalg.norm(f, axis=1).max() for f in aero_forces)   + 1e-6
-        max_thrust = max(np.linalg.norm(f, axis=1).max() for f in thrust_forces) + 1e-6
+        window_size = params.get("window_size", 30.0)
+        arrow_scale = params.get("arrow_scale", window_size * 0.15)
 
-    # -----------------------------
+        max_aero = (
+            max(np.linalg.norm(f, axis=1).max() for f in aero_forces)
+            + 1e-6
+        )
+
+        max_thrust = (
+            max(np.linalg.norm(f, axis=1).max() for f in thrust_forces)
+            + 1e-6
+        )
+
+    # ------------------------------------------------------------------
     # Global bounds
-    # -----------------------------
-    all_pos = np.vstack(drones_xyz + [payload_xyz])
+    # ------------------------------------------------------------------
+    all_pos = np.vstack(
+        drones_xyz + [connector_xyz, payload_xyz]
+    )
+
     x_min, x_max = all_pos[:, 0].min(), all_pos[:, 0].max()
     y_min, y_max = all_pos[:, 1].min(), all_pos[:, 1].max()
     z_min, z_max = all_pos[:, 2].min(), all_pos[:, 2].max()
 
-    plt.switch_backend('TkAgg')
+    plt.switch_backend("TkAgg")
 
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection="3d")
@@ -203,163 +222,354 @@ def animate_trajectories_3d(
     ax.grid(True)
 
     try:
-        ax.set_box_aspect([
-            x_max - x_min,
-            y_max - y_min,
-            z_max - z_min + 1e-6,
-        ])
+        ax.set_box_aspect(
+            [
+                x_max - x_min,
+                y_max - y_min,
+                z_max - z_min + 1e-6,
+            ]
+        )
     except Exception:
         pass
 
     try:
-        ax.set_proj_type('ortho')
+        ax.set_proj_type("ortho")
     except Exception:
         pass
 
-    # -----------------------------
+    # ------------------------------------------------------------------
     # Artists
-    # -----------------------------
-    drone_trails  = []
+    # ------------------------------------------------------------------
+    drone_trails = []
     drone_markers = []
-    cable_lines   = []
+    cable_lines = []
 
     for i, color in enumerate(colors):
-        trail  = ax.plot([], [], [], linewidth=1.0, color=color)[0]
-        marker = ax.plot([], [], [], "o", color=color, markersize=6, label=f"Drone {i}")[0]
-        cable  = ax.plot([], [], [], "-", linewidth=1.0, color=color)[0]
+
+        trail = ax.plot(
+            [], [], [],
+            linewidth=1.0,
+            color=color,
+        )[0]
+
+        marker = ax.plot(
+            [], [], [],
+            "o",
+            color=color,
+            markersize=6,
+            label=f"Drone {i}",
+        )[0]
+
+        cable = ax.plot(
+            [], [], [],
+            "-",
+            linewidth=1.0,
+            color=color,
+        )[0]
 
         ax.plot(
             history["trajectories"][i][:, 0],
             history["trajectories"][i][:, 1],
             history["trajectories"][i][:, 2],
-            "--", linewidth=0.5, color=color, alpha=0.5,
+            "--",
+            linewidth=0.5,
+            color=color,
+            alpha=0.5,
         )
 
         drone_trails.append(trail)
         drone_markers.append(marker)
         cable_lines.append(cable)
 
-    payload_marker = ax.plot([], [], [], "ks", markersize=8, label="Payload")[0]
-    time_text      = ax.text2D(0.02, 0.95, "", transform=ax.transAxes)
+    # connector -> payload cable
+    connector_payload_cable = ax.plot(
+        [], [], [],
+        "k-",
+        linewidth=2.0,
+    )[0]
 
-    # ── Quiver artists for forces ──────────────────────────────────
-    # Quivers can't be updated in-place in 3D matplotlib — remove/recreate each frame
-    aero_quivers   = [None] * n_drones
+    connector_marker = ax.plot(
+        [], [], [],
+        "ko",
+        markersize=8,
+        label="Connector",
+    )[0]
+
+    payload_marker = ax.plot(
+        [], [], [],
+        "ks",
+        markersize=8,
+        label="Payload",
+    )[0]
+
+    time_text = ax.text2D(
+        0.02,
+        0.95,
+        "",
+        transform=ax.transAxes,
+    )
+
+    # ------------------------------------------------------------------
+    # Force quivers
+    # ------------------------------------------------------------------
+    aero_quivers = [None] * n_drones
     thrust_quivers = [None] * n_drones
 
-    # Add dummy patches for legend
     if has_forces:
         from matplotlib.lines import Line2D
+
         ax.legend(
             loc="upper right",
             handles=[
-                *[Line2D([0],[0], color=colors[i], marker='o', label=f"Drone {i}") for i in range(n_drones)],
-                Line2D([0],[0], color='white', marker='>', markerfacecolor='cyan',   markersize=8, label="Aero"),
-                Line2D([0],[0], color='white', marker='>', markerfacecolor='orange', markersize=8, label="Thrust"),
-            ]
+                *[
+                    Line2D(
+                        [0],
+                        [0],
+                        color=colors[i],
+                        marker="o",
+                        label=f"Drone {i}",
+                    )
+                    for i in range(n_drones)
+                ],
+                Line2D(
+                    [0],
+                    [0],
+                    color="black",
+                    marker="o",
+                    label="Connector",
+                ),
+                Line2D(
+                    [0],
+                    [0],
+                    color="black",
+                    marker="s",
+                    label="Payload",
+                ),
+                Line2D(
+                    [0],
+                    [0],
+                    color="white",
+                    marker=">",
+                    markerfacecolor="cyan",
+                    markersize=8,
+                    label="Aero",
+                ),
+                Line2D(
+                    [0],
+                    [0],
+                    color="white",
+                    marker=">",
+                    markerfacecolor="orange",
+                    markersize=8,
+                    label="Thrust",
+                ),
+            ],
         )
     else:
         ax.legend(loc="upper right")
 
     all_artists = tuple(
-        drone_trails + drone_markers + cable_lines + [payload_marker, time_text]
+        drone_trails
+        + drone_markers
+        + cable_lines
+        + [
+            connector_payload_cable,
+            connector_marker,
+            payload_marker,
+            time_text,
+        ]
     )
 
-    # -----------------------------
+    # ------------------------------------------------------------------
     # Init
-    # -----------------------------
+    # ------------------------------------------------------------------
     def _init():
+
         for t in drone_trails:
             t.set_data([], [])
             cast(Any, t).set_3d_properties([])
+
         for m in drone_markers:
             m.set_data([], [])
             cast(Any, m).set_3d_properties([])
+
         for c in cable_lines:
             c.set_data([], [])
             cast(Any, c).set_3d_properties([])
+
+        connector_payload_cable.set_data([], [])
+        cast(Any, connector_payload_cable).set_3d_properties([])
+
+        connector_marker.set_data([], [])
+        cast(Any, connector_marker).set_3d_properties([])
+
         payload_marker.set_data([], [])
         cast(Any, payload_marker).set_3d_properties([])
+
         time_text.set_text("")
+
         return all_artists
 
-    # -----------------------------
-    # Update
-    # -----------------------------
-    n_frames    = (len(history["t"]) - 1) // stride + 1
-    window_size = params.get("window_size", 30.0)
-    half_win    = window_size / 2.0
+    # ------------------------------------------------------------------
+    # Animation parameters
+    # ------------------------------------------------------------------
+    n_frames = (len(history["t"]) - 1) // stride + 1
 
+    window_size = params.get("window_size", 30.0)
+    half_win = window_size / 2.0
+
+    # ------------------------------------------------------------------
+    # Update
+    # ------------------------------------------------------------------
     def _update(frame):
+
         nonlocal aero_quivers, thrust_quivers
 
-        k  = min(frame * stride, len(history["t"]) - 1)
-        trail_start = max(0, k - trail_length)
+        k = min(
+            frame * stride,
+            len(history["t"]) - 1,
+        )
 
+        trail_start = max(
+            0,
+            k - trail_length,
+        )
+
+        cx, cy, cz = connector_xyz[k]
         px, py, pz = payload_xyz[k]
 
         for i in range(n_drones):
+
             xyz = drones_xyz[i]
 
-            drone_trails[i].set_data(xyz[trail_start:k+1, 0], xyz[trail_start:k+1, 1])
-            cast(Any, drone_trails[i]).set_3d_properties(xyz[trail_start:k+1, 2])
+            drone_trails[i].set_data(
+                xyz[trail_start:k + 1, 0],
+                xyz[trail_start:k + 1, 1],
+            )
 
-            drone_markers[i].set_data([xyz[k, 0]], [xyz[k, 1]])
-            cast(Any, drone_markers[i]).set_3d_properties([xyz[k, 2]])
+            cast(Any, drone_trails[i]).set_3d_properties(
+                xyz[trail_start:k + 1, 2]
+            )
 
-            cable_lines[i].set_data([px, xyz[k, 0]], [py, xyz[k, 1]])
-            cast(Any, cable_lines[i]).set_3d_properties([pz, xyz[k, 2]])
+            drone_markers[i].set_data(
+                [xyz[k, 0]],
+                [xyz[k, 1]],
+            )
 
-            # ── Force arrows ───────────────────────────────────────
+            cast(Any, drone_markers[i]).set_3d_properties(
+                [xyz[k, 2]]
+            )
+
+            # drone -> connector cable
+            cable_lines[i].set_data(
+                [cx, xyz[k, 0]],
+                [cy, xyz[k, 1]],
+            )
+
+            cast(Any, cable_lines[i]).set_3d_properties(
+                [cz, xyz[k, 2]]
+            )
+
             if has_forces:
+
                 x0, y0, z0 = xyz[k]
 
-                # Remove previous quivers
                 if aero_quivers[i] is not None:
                     aero_quivers[i].remove()
+
                 if thrust_quivers[i] is not None:
                     thrust_quivers[i].remove()
 
-                aero_vec   = aero_forces[i][k]
+                aero_vec = aero_forces[i][k]
                 thrust_vec = thrust_forces[i][k]
 
-                # Normalise then scale to fixed arrow_scale length
-                aero_dir   = aero_vec   / max_aero   * arrow_scale
+                aero_dir = aero_vec / max_aero * arrow_scale
                 thrust_dir = thrust_vec / max_thrust * arrow_scale
 
                 aero_quivers[i] = ax.quiver(
-                    x0, y0, z0,
-                    aero_dir[0], aero_dir[1], aero_dir[2],
-                    color="cyan", linewidth=1.5, arrow_length_ratio=0.3,
+                    x0,
+                    y0,
+                    z0,
+                    aero_dir[0],
+                    aero_dir[1],
+                    aero_dir[2],
+                    color="cyan",
+                    linewidth=1.5,
+                    arrow_length_ratio=0.3,
                 )
+
                 thrust_quivers[i] = ax.quiver(
-                    x0, y0, z0,
-                    thrust_dir[0], thrust_dir[1], thrust_dir[2],
-                    color="orange", linewidth=1.5, arrow_length_ratio=0.3,
+                    x0,
+                    y0,
+                    z0,
+                    thrust_dir[0],
+                    thrust_dir[1],
+                    thrust_dir[2],
+                    color="orange",
+                    linewidth=1.5,
+                    arrow_length_ratio=0.3,
                 )
 
-        payload_marker.set_data([px], [py])
-        cast(Any, payload_marker).set_3d_properties([pz])
+        # connector marker
+        connector_marker.set_data(
+            [cx],
+            [cy],
+        )
 
-        cx, cy, cz = px, py, pz
-        ax.set_xlim(cx - half_win, cx + half_win)
-        ax.set_ylim(cy - half_win, cy + half_win)
-        ax.set_zlim(cz - half_win, cz + half_win)
+        cast(Any, connector_marker).set_3d_properties(
+            [cz]
+        )
+
+        # payload marker
+        payload_marker.set_data(
+            [px],
+            [py],
+        )
+
+        cast(Any, payload_marker).set_3d_properties(
+            [pz]
+        )
+
+        # connector -> payload cable
+        connector_payload_cable.set_data(
+            [cx, px],
+            [cy, py],
+        )
+
+        cast(Any, connector_payload_cable).set_3d_properties(
+            [cz, pz]
+        )
+
+        # camera follows midpoint
+        mx = 0.5 * (cx + px)
+        my = 0.5 * (cy + py)
+        mz = 0.5 * (cz + pz)
+
+        ax.set_xlim(mx - half_win, mx + half_win)
+        ax.set_ylim(my - half_win, my + half_win)
+        ax.set_zlim(mz - half_win, mz + half_win)
         ax.set_box_aspect((1, 1, 1))
 
         label = f"t = {history['t'][k]:6.2f} s"
+
         if has_phases:
             label += f" | {history['phase'][k]}"
+
         time_text.set_text(label)
 
         return all_artists
 
-    # -----------------------------
+    # ------------------------------------------------------------------
     # Animation
-    # -----------------------------
+    # ------------------------------------------------------------------
     from src.utils.default_params import DEFAULT_PARAMS
-    dt          = DEFAULT_PARAMS.get("dt", 0.01)
-    interval_ms = max(1, int(round(stride * dt * 1000)))
+
+    dt = DEFAULT_PARAMS.get("simulation_dt", 0.01)
+
+    interval_ms = max(
+        1,
+        int(round(stride * dt * 1000)),
+    )
 
     anim = animation.FuncAnimation(
         fig,
@@ -375,7 +585,6 @@ def animate_trajectories_3d(
     plt.show()
 
     return anim
-
 
 def plot_drone_distances(history: dict, output_path: str = "output/drone_distances.png") -> None:
     t                 = history["t"]

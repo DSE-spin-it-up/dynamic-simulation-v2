@@ -41,21 +41,9 @@ def compute_drone_aero_forces(drone: Drone, wind_vector: np.ndarray | None) -> n
     # No negative sign: relative velocity already points opposite to drag
     drag = DEFAULT_PARAMS["drone_cd"] * q_dyn * v_hat
 
-    # ── Lift ──────────────────────────────────────────────────────────
-    # Lift is perpendicular to velocity — vanishes when flying vertically.
-    # Project world-up onto the plane perpendicular to v_hat.
-    world_up = np.array([0.0, 0.0, 1.0])
-    lift_dir = world_up - np.dot(world_up, v_hat) * v_hat
-    lift_dir_norm = np.linalg.norm(lift_dir)
+    # No lift modelling, it is instead just the controller limited in vertical force
 
-    if lift_dir_norm > 1e-6:
-        lift_dir /= lift_dir_norm
-        lift = DEFAULT_PARAMS["drone_cl"] * q_dyn * lift_dir
-    else:
-        # Flying perfectly vertically — no lift
-        lift = np.zeros(3)
-
-    return drag + lift
+    return drag
 
 def compute_payload_aero_forces(payload: Payload, wind_vector: np.ndarray | None) -> np.ndarray:
     """Payload only creates drag"""
@@ -73,6 +61,25 @@ def compute_payload_aero_forces(payload: Payload, wind_vector: np.ndarray | None
     q_dyn = 0.5 * DEFAULT_PARAMS["rho_air"] * DEFAULT_PARAMS["payload_area"] * speed**2
 
     drag = DEFAULT_PARAMS["payload_cd"] * q_dyn * v_hat
+
+    return drag
+
+def compute_connector_aero_forces(connector: Drone, wind_vector: np.ndarray | None) -> np.ndarray:
+    """Connector only creates drag"""
+
+    if wind_vector is None:
+        return np.zeros(3)
+
+    relative_air_velocity = wind_vector - connector.v
+    speed = np.linalg.norm(relative_air_velocity)
+
+    if speed < 1e-9:
+        return np.zeros(3)
+
+    v_hat = relative_air_velocity / speed
+    q_dyn = 0.5 * DEFAULT_PARAMS["rho_air"] * DEFAULT_PARAMS["connector_length"] * speed**2
+
+    drag = DEFAULT_PARAMS["connector_cd"] * q_dyn * v_hat
 
     return drag
 
@@ -128,39 +135,122 @@ def get_wind_vector(t: float, last_gust_t: float | None = None, last_wind_vector
 
     
 
-def compute_forces(drones: list[Drone], cables: list[Cable], payload: Payload, last_gust_t: float | None, last_wind_vector: np.ndarray | None, t: float) -> tuple[dict[int, dict[str, np.ndarray]], float | None, np.ndarray | None]:
+def compute_forces(
+    drones: list[Drone],
+    cables: list[Cable],
+    connector: Payload,
+    payload: Payload,
+    last_gust_t: float | None,
+    last_wind_vector: np.ndarray | None,
+    t: float,
+) -> tuple[
+    dict[int, dict[str, np.ndarray]],
+    float | None,
+    np.ndarray | None,
+]:
     """
-    Calculate all forces acting on drones and payload at the current state.
-    Returns a dictionary of force components for each object.
+    Calculate all forces acting on drones, connector and payload.
     """
-    # Compute forces
-    forces_snapshot = {id: {} for id in [drone.id for drone in drones]}
-    forces_snapshot[-1] = {} # Payload forces accessed with ID -1
-        
-    # For each cable, compute forces and apply to payload and drone
-    forces_snapshot[-1]["cable_tension"] = np.zeros(3) # Initialize payload cable tension
+
+    # -------------------------------------------------------------
+    # Force dictionary
+    # -------------------------------------------------------------
+    forces_snapshot = {
+        drone.id: {}
+        for drone in drones
+    }
+
+    forces_snapshot[-1] = {}  # connector
+    forces_snapshot[-2] = {}  # payload
+
+    # -------------------------------------------------------------
+    # Initialise cable force accumulators
+    # -------------------------------------------------------------
+    forces_snapshot[-1]["cable_tension"] = np.zeros(3)
+    forces_snapshot[-2]["cable_tension"] = np.zeros(3)
+
+    # -------------------------------------------------------------
+    # Cable forces
+    # -------------------------------------------------------------
     for cable in cables:
-        # There is only one cable per drone, several for the payload
+
         force_payload, force_drone = cable.force_vectors()
-        forces_snapshot[-1]["cable_tension"] += force_payload
-        forces_snapshot[cable.drone.id]["cable_tension"] = force_drone
+        # Apply force to cable.payload endpoint
+        payload_id = cable.payload.id
+        forces_snapshot[payload_id]["cable_tension"] += force_payload
 
-    # Aero forces for drones and payload
-    wind_vector, last_gust_t = get_wind_vector(t, last_gust_t, last_wind_vector)  # Assuming same wind for all objects
+        # Apply force to cable.drone endpoint
+        drone_id = cable.drone.id
+
+        if drone_id >= 0:
+            # real drone
+            forces_snapshot[drone_id]["cable_tension"] = force_drone
+
+        else:
+            # connector acting as cable endpoint
+            forces_snapshot[drone_id]["cable_tension"] += force_drone
+
+    # -------------------------------------------------------------
+    # Wind
+    # -------------------------------------------------------------
+    wind_vector, last_gust_t = get_wind_vector(
+        t,
+        last_gust_t,
+        last_wind_vector,
+    )
+
+    # -------------------------------------------------------------
+    # Drone aero
+    # -------------------------------------------------------------
     for drone in drones:
-        aero_force = compute_drone_aero_forces(drone, wind_vector)
-        forces_snapshot[drone.id]["aero"] = aero_force
-    aero_force_payload = compute_payload_aero_forces(payload, wind_vector)
-    forces_snapshot[-1]["aero"] = aero_force_payload
+        forces_snapshot[drone.id]["aero"] = (
+            compute_drone_aero_forces(
+                drone,
+                wind_vector,
+            )
+        )
 
-    # Gravity forces for drones and payload
+    # -------------------------------------------------------------
+    # Connector aero
+    # -------------------------------------------------------------
+    forces_snapshot[-1]["aero"] = (
+        compute_connector_aero_forces(
+            connector, # type: ignore
+            wind_vector,
+        )
+    )
+
+    # -------------------------------------------------------------
+    # Payload aero
+    # -------------------------------------------------------------
+    forces_snapshot[-2]["aero"] = (
+        compute_payload_aero_forces(
+            payload,
+            wind_vector,
+        )
+    )
+
+    # -------------------------------------------------------------
+    # Gravity
+    # -------------------------------------------------------------
     for drone in drones:
-        gravity_force = compute_gravity_force(drone.mass)
-        forces_snapshot[drone.id]["gravity"] = gravity_force
-    gravity_force_payload = compute_gravity_force(payload.mass)
-    forces_snapshot[-1]["gravity"] = gravity_force_payload
+        forces_snapshot[drone.id]["gravity"] = (
+            compute_gravity_force(drone.mass)
+        )
 
-    return forces_snapshot, last_gust_t, wind_vector
+    forces_snapshot[-1]["gravity"] = (
+        compute_gravity_force(connector.mass)
+    )
+
+    forces_snapshot[-2]["gravity"] = (
+        compute_gravity_force(payload.mass)
+    )
+
+    return (
+        forces_snapshot,
+        last_gust_t,
+        wind_vector,
+    )
 
 def compute_net_forces(forces_dict: dict[int, dict[str, np.ndarray]]) -> dict[int, np.ndarray]:
     """

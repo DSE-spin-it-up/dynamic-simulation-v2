@@ -11,7 +11,7 @@ DEFAULT_PARAMS: dict = {
     "g": 9.81,          # gravitational acceleration, m/s²
     "rho_air": 1.225,    # air density at sea level, kg/m³
     "thrust_limit_forward": 180.0, # maximum thrust per drone, N
-    "thrust_limit_upward": 200.0,  # maximum upward thrust per drone, N
+    "thrust_limit_upward": 600.0,  # maximum upward thrust per drone, N
     "thrust_limit_lateral": 90.0, # maximum lateral thrust per drone, N
 
     # Drone properties
@@ -19,6 +19,12 @@ DEFAULT_PARAMS: dict = {
     "drone_cl": 0.5,                # lift coefficient
     "drone_cd": 0.1,                # drag coefficient
     "drone_area": 1.4,              # wing area for aero forces
+
+    # Connector properties
+    "connector_mass": 1.0,   # mass of the connector between drone and
+    "connector_length": 0.5, # length of the connector between drone and cable
+    "connector_cd": 1.0,       # drag coefficient of the connector
+
     # Payload properties
     "m_payload": 50.0,         # payload mass, kg
     "payload_cd": 0.47,           # payload drag coefficient
@@ -31,12 +37,12 @@ DEFAULT_PARAMS: dict = {
 
     # Controller
     "prop_error" : 80.0,   # proportional gain for radial error
-    "deriv_error" : 100.0,    # derivative gain for radial error
-    "int_error" : 10.0,      # integral gain for radial error
+    "deriv_error" : 120.0,    # derivative gain for radial error
+    "int_error" : 20.0,      # integral gain for radial error
     "integral_limit": 3000.0, # maximum magnitude of integral error term
 
     # Integration
-    "simulation_dt":      0.01,    # output time-step (not the ODE step)
+    "simulation_dt":      0.001,    # output time-step (not the ODE step)
 
     # Wind
     "wind": False,

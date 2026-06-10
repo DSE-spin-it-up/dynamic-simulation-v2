@@ -27,20 +27,25 @@ def get_initial_states(trajectories: dict[int, np.ndarray], dt: float) -> dict:
             "velocity": initial_velocity,
         }
 
-    # Payload at center of drones
-    payload_position = np.mean(
+    # Connector at center of drones
+    connector_position = np.mean(
         [state["position"] for state in states.values()],
         axis=0,
     )
 
-    payload_velocity = np.mean(
+    connector_velocity = np.mean(
         [state["velocity"] for state in states.values()],
         axis=0,
     )
 
     states[-1] = {
-        "position": payload_position,
-        "velocity": payload_velocity,
+        "position": connector_position,
+        "velocity": connector_velocity,
+    }
+    # Payload a below connector
+    states[-2] = {
+        "position": connector_position - np.array([0, 0, DEFAULT_PARAMS["connector_length"]]),
+        "velocity": connector_velocity,
     }
         
     return states
